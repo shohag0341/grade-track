@@ -299,14 +299,15 @@ select:focus-visible,
   stroke-width: 10;
 }
 
+/* Find this existing rule in .hero-card__ring-progress and change
+   only the stroke-dashoffset line: */
 .hero-card__ring-progress {
   fill: none;
-  stroke: url(#ringGradient);
   stroke: var(--color-primary);
   stroke-width: 10;
   stroke-linecap: round;
-  stroke-dasharray: 389.6; /* 2*pi*62 */
-  stroke-dashoffset: 389.6;
+  stroke-dasharray: 389.6;
+  stroke-dashoffset: var(--ring-offset, 389.6); /* was a fixed 389.6 */
   transition: stroke-dashoffset 900ms var(--ease-out);
 }
 
