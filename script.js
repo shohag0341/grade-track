@@ -506,14 +506,323 @@ GradeTrack.Router = (function () {
 /* ================================================================
    9. BOOTSTRAP
 ================================================================= */
+
+
 document.addEventListener('DOMContentLoaded', function () {
   GradeTrack.Telegram.init();
   GradeTrack.State.init();
   GradeTrack.Modal.init();
   GradeTrack.Router.init();
+  GradeTrack.Dashboard.init();
+});
+
+
   // Feature modules register their own Router.onEnter hooks and
   // State.subscribe listeners in sections appended below.
 });
+
+/* ================================================================
+   >>> FUTURE STEPS APPEND NEW FEATURE MODULES BELOW THIS LINE <<<
+================================================================= */
+
+
+
+
+
+
+
+/* ================================================================
+   10. CALC MODULE
+   Shared GPA/CGPA/status math used by Dashboard, Semesters, Target,
+   and Trend. Keeping this in one place means every screen agrees
+   on the same numbers.
+================================================================= */
+GradeTrack.Calc = (function () {
+
+  function getActiveScale(state) {
+    const key = (state.settings && state.settings.gradingScale) || GradeTrack.Constants.DEFAULT_SCALE;
+    return GradeTrack.Constants.GRADE_SCALES[key] || GradeTrack.Constants.GRADE_SCALES[GradeTrack.Constants.DEFAULT_SCALE];
+  }
+
+  function pointForGrade(scale, gradeCode) {
+    const found = scale.grades.find(function (g) { return g.code === gradeCode; });
+    return found ? found.point : 0;
+  }
+
+  // GPA for a single semester: credit-weighted average of its courses.
+  function computeSemesterGPA(semester, scale) {
+    const courses = semester.courses || [];
+    let totalPoints = 0;
+    let totalCredits = 0;
+    courses.forEach(function (course) {
+      const credits = Number(course.credits) || 0;
+      const point = pointForGrade(scale, course.grade);
+      totalPoints += point * credits;
+      totalCredits += credits;
+    });
+    const gpa = totalCredits > 0 ? totalPoints / totalCredits : 0;
+    return { gpa, totalCredits };
+  }
+
+  // CGPA across all semesters: credit-weighted average of every course
+  // in every semester (equivalent to averaging semester GPAs weighted
+  // by each semester's credit load).
+  function computeCGPA(semesters, scale) {
+    let totalPoints = 0;
+    let totalCredits = 0;
+    (semesters || []).forEach(function (semester) {
+      (semester.courses || []).forEach(function (course) {
+        const credits = Number(course.credits) || 0;
+        const point = pointForGrade(scale, course.grade);
+        totalPoints += point * credits;
+        totalCredits += credits;
+      });
+    });
+    const cgpa = totalCredits > 0 ? totalPoints / totalCredits : 0;
+    return { cgpa, totalCredits };
+  }
+
+  // Academic status band based on CGPA-to-scale-max ratio, so it
+  // works identically regardless of which grading scale is active.
+  function getAcademicStatus(cgpa, scale, hasAnyCredits) {
+    if (!hasAnyCredits) {
+      return { label: 'No Data Yet', badgeClass: 'badge badge--neutral' };
+    }
+    const ratio = GradeTrack.Utils.clamp(cgpa / scale.max, 0, 1);
+    const bands = GradeTrack.Constants.STATUS_BANDS;
+    for (let i = 0; i < bands.length; i++) {
+      if (ratio >= bands[i].minRatio) return bands[i];
+    }
+    return bands[bands.length - 1];
+  }
+
+  return { getActiveScale, pointForGrade, computeSemesterGPA, computeCGPA, getAcademicStatus };
+})();
+
+/* ================================================================
+   11. SELECTION MODULE
+   Tiny shared piece of state (not persisted) that tracks which
+   semester/course a secondary screen is currently focused on —
+   e.g. Dashboard/Semesters set this before navigating to
+   Semester Detail; the Course modal uses it to know whether it's
+   adding vs. editing.
+================================================================= */
+GradeTrack.Selection = (function () {
+  let semesterId = null;
+  let courseId = null; // null = adding a new course, set = editing
+
+  return {
+    getSemesterId: function () { return semesterId; },
+    setSemesterId: function (id) { semesterId = id; },
+    getCourseId: function () { return courseId; },
+    setCourseId: function (id) { courseId = id; }
+  };
+})();
+
+/* ================================================================
+   12. TEMPLATES MODULE
+   Small reusable HTML-string builders shared across screens, so
+   the Semester Card markup (used on both Dashboard and the full
+   Semesters list) is defined exactly once.
+================================================================= */
+GradeTrack.Templates = (function () {
+  function semesterCardHTML(semester, gpa, totalCredits) {
+    const name = GradeTrack.Utils.escapeHTML(semester.name);
+    const courseCount = (semester.courses || []).length;
+    const courseLabel = courseCount === 1 ? 'course' : 'courses';
+    return (
+      '<button class="semester-card" type="button" data-semester-id="' + semester.id + '">' +
+        '<div class="semester-card__info">' +
+          '<div class="semester-card__name">' + name + '</div>' +
+          '<div class="semester-card__meta">' + courseCount + ' ' + courseLabel + ' &middot; ' + totalCredits + ' credits</div>' +
+        '</div>' +
+        '<div class="semester-card__gpa">' +
+          '<span class="semester-card__gpa-value">' + GradeTrack.Utils.formatGPA(gpa) + '</span>' +
+          '<span class="semester-card__gpa-label">GPA</span>' +
+        '</div>' +
+      '</button>'
+    );
+  }
+
+  return { semesterCardHTML };
+})();
+
+/* ================================================================
+   13. DASHBOARD MODULE
+================================================================= */
+GradeTrack.Dashboard = (function () {
+  let miniChart = null;
+
+  function getGreeting() {
+    const hour = new Date().getHours();
+    if (hour < 12) return 'Good morning';
+    if (hour < 18) return 'Good afternoon';
+    return 'Good evening';
+  }
+
+  function getDisplayName(state) {
+    const stored = (state.settings.studentName || '').trim();
+    if (stored) return stored;
+    const tgName = GradeTrack.Telegram.getTelegramUserFirstName();
+    if (tgName) return tgName;
+    return 'Student';
+  }
+
+  function renderHeroRing(cgpa, scale, hasCredits) {
+    const ringEl = document.getElementById('hero-ring-progress');
+    const valueEl = document.getElementById('hero-cgpa-value');
+    const scaleNoteEl = document.getElementById('dashboard-scale-note');
+    const circumference = 389.6;
+    const ratio = hasCredits ? GradeTrack.Utils.clamp(cgpa / scale.max, 0, 1) : 0;
+    const offset = circumference * (1 - ratio);
+    if (ringEl) ringEl.style.setProperty('--ring-offset', offset.toFixed(1));
+    if (valueEl) valueEl.textContent = GradeTrack.Utils.formatGPA(cgpa);
+    if (scaleNoteEl) scaleNoteEl.textContent = 'out of ' + scale.max.toFixed(2);
+  }
+
+  function renderStatusBadge(cgpa, scale, hasCredits) {
+    const badgeEl = document.getElementById('dashboard-status-badge');
+    if (!badgeEl) return;
+    const status = GradeTrack.Calc.getAcademicStatus(cgpa, scale, hasCredits);
+    badgeEl.textContent = status.label;
+    badgeEl.className = status.badgeClass;
+  }
+
+  function renderStats(state, totalCredits) {
+    const creditsEl = document.getElementById('dashboard-credits-value');
+    const semestersEl = document.getElementById('dashboard-semesters-value');
+    if (creditsEl) creditsEl.textContent = totalCredits;
+    if (semestersEl) semestersEl.textContent = state.semesters.length;
+  }
+
+  function renderTrendPreview(state, scale) {
+    const canvas = document.getElementById('dashboard-trend-chart');
+    const emptyEl = document.getElementById('dashboard-trend-empty');
+    const semesters = state.semesters;
+
+    if (semesters.length < 2) {
+      if (canvas) canvas.style.display = 'none';
+      if (emptyEl) emptyEl.classList.add('is-visible');
+      if (miniChart) { miniChart.destroy(); miniChart = null; }
+      return;
+    }
+
+    if (canvas) canvas.style.display = 'block';
+    if (emptyEl) emptyEl.classList.remove('is-visible');
+
+    const labels = semesters.map(function (s) { return s.name; });
+    const data = semesters.map(function (s) { return GradeTrack.Calc.computeSemesterGPA(s, scale).gpa; });
+
+    if (miniChart) miniChart.destroy();
+    if (!canvas || !window.Chart) return;
+
+    const ctx = canvas.getContext('2d');
+    const gradient = ctx.createLinearGradient(0, 0, 0, 90);
+    gradient.addColorStop(0, 'rgba(124, 92, 255, 0.35)');
+    gradient.addColorStop(1, 'rgba(124, 92, 255, 0)');
+
+    miniChart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: labels,
+        datasets: [{
+          data: data,
+          borderColor: '#9E6CFF',
+          backgroundColor: gradient,
+          borderWidth: 2,
+          fill: true,
+          tension: 0.4,
+          pointRadius: 0,
+          pointHoverRadius: 4,
+          pointBackgroundColor: '#7C5CFF'
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false }, tooltip: { enabled: true } },
+        scales: {
+          x: { display: false },
+          y: { display: false, min: 0, max: scale.max }
+        }
+      }
+    });
+  }
+
+  function renderRecentSemesters(state, scale) {
+    const listEl = document.getElementById('dashboard-recent-semesters');
+    const emptyEl = document.getElementById('dashboard-semesters-empty');
+    if (!listEl) return;
+
+    const recent = state.semesters.slice(-3).reverse();
+
+    if (recent.length === 0) {
+      listEl.innerHTML = '';
+      if (emptyEl) emptyEl.classList.add('is-visible');
+      return;
+    }
+    if (emptyEl) emptyEl.classList.remove('is-visible');
+
+    listEl.innerHTML = recent.map(function (semester) {
+      const info = GradeTrack.Calc.computeSemesterGPA(semester, scale);
+      return GradeTrack.Templates.semesterCardHTML(semester, info.gpa, info.totalCredits);
+    }).join('');
+  }
+
+  function render(state) {
+    const scale = GradeTrack.Calc.getActiveScale(state);
+    const cgpaInfo = GradeTrack.Calc.computeCGPA(state.semesters, scale);
+    const hasCredits = cgpaInfo.totalCredits > 0;
+
+    const greetingEl = document.getElementById('dashboard-greeting');
+    const nameEl = document.getElementById('dashboard-username');
+    if (greetingEl) greetingEl.textContent = getGreeting();
+    if (nameEl) nameEl.textContent = getDisplayName(state);
+
+    renderHeroRing(cgpaInfo.cgpa, scale, hasCredits);
+    renderStatusBadge(cgpaInfo.cgpa, scale, hasCredits);
+    renderStats(state, cgpaInfo.totalCredits);
+    renderTrendPreview(state, scale);
+    renderRecentSemesters(state, scale);
+  }
+
+  // Tapping a semester card anywhere (Dashboard or later, Semesters
+  // list) navigates to Semester Detail with that semester selected.
+  function bindSemesterCardClicks() {
+    document.addEventListener('click', function (e) {
+      const card = e.target.closest('.semester-card');
+      if (!card) return;
+      const id = card.getAttribute('data-semester-id');
+      if (!id) return;
+      GradeTrack.Selection.setSemesterId(id);
+      GradeTrack.Router.navigate('semester-detail');
+    });
+  }
+
+  function init() {
+    const settingsBtn = document.getElementById('dashboard-settings-btn');
+    if (settingsBtn) settingsBtn.addEventListener('click', function () {
+      GradeTrack.Router.navigate('settings');
+    });
+
+    // Opens the Add Semester sheet; Semester Management (next step)
+    // wires the actual save logic to this same modal's form.
+    const addSemesterBtn = document.getElementById('qa-add-semester');
+    if (addSemesterBtn) addSemesterBtn.addEventListener('click', function () {
+      GradeTrack.Selection.setSemesterId(null);
+      GradeTrack.Modal.open('semester');
+    });
+
+    bindSemesterCardClicks();
+
+    GradeTrack.Router.onEnter('dashboard', render);
+    GradeTrack.State.subscribe(function (state) {
+      if (GradeTrack.Router.current() === 'dashboard') render(state);
+    });
+  }
+
+  return { init, render };
+})();
 
 /* ================================================================
    >>> FUTURE STEPS APPEND NEW FEATURE MODULES BELOW THIS LINE <<<
