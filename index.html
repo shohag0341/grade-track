@@ -1,0 +1,529 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <title>GradeTrack — GPA & CGPA Manager</title>
+  <meta name="description" content="GradeTrack — the smartest way for students to track GPA and CGPA on Telegram." />
+  <meta name="theme-color" content="#09090F" />
+
+  <!-- Telegram WebApp SDK -->
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+
+  <!-- Chart.js -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
+
+  <!-- Fonts: Poppins -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+
+  <!-- App stylesheet -->
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!-- ============================================================
+       APP ROOT
+  ============================================================= -->
+  <div id="app">
+
+    <!-- ============================================================
+         AMBIENT BACKGROUND (purple gradient glow, decorative only)
+    ============================================================= -->
+    <div class="bg-glow bg-glow--top" aria-hidden="true"></div>
+    <div class="bg-glow bg-glow--bottom" aria-hidden="true"></div>
+
+    <!-- ============================================================
+         SCREENS CONTAINER
+         Only one .screen has the `is-active` class at a time.
+         Router (script.js) toggles visibility.
+    ============================================================= -->
+    <main id="screens" class="screens">
+
+      <!-- ==========================================================
+           SCREEN: DASHBOARD
+      =========================================================== -->
+      <section id="screen-dashboard" class="screen is-active" data-screen="dashboard">
+        <header class="topbar">
+          <div class="topbar__text">
+            <p class="topbar__eyebrow" id="dashboard-greeting">Good morning</p>
+            <h1 class="topbar__title" id="dashboard-username">Student</h1>
+          </div>
+          <button class="icon-btn" id="dashboard-settings-btn" type="button" aria-label="Open settings">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"></path></svg>
+          </button>
+        </header>
+
+        <!-- Hero CGPA card -->
+        <section class="hero-card glass-card" aria-labelledby="hero-cgpa-label">
+          <div class="hero-card__ring-wrap">
+            <svg class="hero-card__ring" viewBox="0 0 140 140" aria-hidden="true">
+              <circle class="hero-card__ring-track" cx="70" cy="70" r="62"></circle>
+              <circle class="hero-card__ring-progress" id="hero-ring-progress" cx="70" cy="70" r="62"></circle>
+            </svg>
+            <div class="hero-card__ring-center">
+              <span class="hero-card__value" id="hero-cgpa-value">0.00</span>
+              <span class="hero-card__label" id="hero-cgpa-label">CGPA</span>
+            </div>
+          </div>
+          <div class="hero-card__meta">
+            <span class="badge" id="dashboard-status-badge">No Data Yet</span>
+            <p class="hero-card__scale" id="dashboard-scale-note">out of 4.00</p>
+          </div>
+        </section>
+
+        <!-- Quick stats row -->
+        <section class="stats-row">
+          <div class="stat-card glass-card">
+            <span class="stat-card__value" id="dashboard-credits-value">0</span>
+            <span class="stat-card__label">Credits Completed</span>
+          </div>
+          <div class="stat-card glass-card">
+            <span class="stat-card__value" id="dashboard-semesters-value">0</span>
+            <span class="stat-card__label">Semesters</span>
+          </div>
+        </section>
+
+        <!-- GPA trend mini preview -->
+        <section class="card glass-card trend-preview" id="dashboard-trend-card">
+          <div class="card__header">
+            <h2 class="card__title">GPA Trend</h2>
+            <button class="link-btn" data-nav="trend" type="button">View all</button>
+          </div>
+          <div class="trend-preview__chart-wrap">
+            <canvas id="dashboard-trend-chart" height="90"></canvas>
+          </div>
+          <p class="empty-inline" id="dashboard-trend-empty">Add at least 2 semesters to see your trend.</p>
+        </section>
+
+        <!-- Quick actions -->
+        <section class="card">
+          <div class="card__header">
+            <h2 class="card__title">Quick Actions</h2>
+          </div>
+          <div class="quick-actions">
+            <button class="quick-action glass-card" id="qa-add-semester" type="button">
+              <span class="quick-action__icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg></span>
+              <span class="quick-action__label">Add Semester</span>
+            </button>
+            <button class="quick-action glass-card" data-nav="calculator" type="button">
+              <span class="quick-action__icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="2" width="16" height="20" rx="2"></rect><line x1="8" y1="7" x2="16" y2="7"></line><line x1="8" y1="12" x2="8" y2="12"></line><line x1="12" y1="12" x2="12" y2="12"></line><line x1="16" y1="12" x2="16" y2="12"></line><line x1="8" y1="16" x2="8" y2="16"></line><line x1="12" y1="16" x2="12" y2="16"></line><line x1="16" y1="16" x2="16" y2="16"></line></svg></span>
+              <span class="quick-action__label">GPA Calculator</span>
+            </button>
+            <button class="quick-action glass-card" data-nav="target" type="button">
+              <span class="quick-action__icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><circle cx="12" cy="12" r="5"></circle><circle cx="12" cy="12" r="1"></circle></svg></span>
+              <span class="quick-action__label">Target CGPA</span>
+            </button>
+            <button class="quick-action glass-card" data-nav="trend" type="button">
+              <span class="quick-action__icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 17 9 11 13 15 21 6"></polyline><polyline points="14 6 21 6 21 13"></polyline></svg></span>
+              <span class="quick-action__label">Trend</span>
+            </button>
+          </div>
+        </section>
+
+        <!-- Recent semesters -->
+        <section class="card">
+          <div class="card__header">
+            <h2 class="card__title">Recent Semesters</h2>
+            <button class="link-btn" data-nav="semesters" type="button">See all</button>
+          </div>
+          <div class="semester-list" id="dashboard-recent-semesters">
+            <!-- Populated by JS -->
+          </div>
+          <p class="empty-inline" id="dashboard-semesters-empty">No semesters yet. Add your first one to get started.</p>
+        </section>
+
+        <div class="nav-spacer" aria-hidden="true"></div>
+      </section>
+
+      <!-- ==========================================================
+           SCREEN: SEMESTERS LIST
+      =========================================================== -->
+      <section id="screen-semesters" class="screen" data-screen="semesters">
+        <header class="topbar">
+          <div class="topbar__text">
+            <p class="topbar__eyebrow">Manage</p>
+            <h1 class="topbar__title">Semesters</h1>
+          </div>
+          <button class="icon-btn icon-btn--primary" id="semesters-add-btn" type="button" aria-label="Add semester">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+          </button>
+        </header>
+
+        <section class="card glass-card summary-strip">
+          <div class="summary-strip__item">
+            <span class="summary-strip__value" id="semesters-overall-cgpa">0.00</span>
+            <span class="summary-strip__label">Overall CGPA</span>
+          </div>
+          <div class="summary-strip__divider" aria-hidden="true"></div>
+          <div class="summary-strip__item">
+            <span class="summary-strip__value" id="semesters-total-credits">0</span>
+            <span class="summary-strip__label">Total Credits</span>
+          </div>
+        </section>
+
+        <div class="semester-list semester-list--full" id="semesters-full-list">
+          <!-- Populated by JS -->
+        </div>
+
+        <div class="empty-state" id="semesters-empty-state">
+          <div class="empty-state__icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path></svg>
+          </div>
+          <h3 class="empty-state__title">No semesters yet</h3>
+          <p class="empty-state__text">Add your first semester to start tracking your GPA journey.</p>
+          <button class="btn btn--primary" id="semesters-empty-add-btn" type="button">Add Semester</button>
+        </div>
+
+        <div class="nav-spacer" aria-hidden="true"></div>
+      </section>
+
+      <!-- ==========================================================
+           SCREEN: SEMESTER DETAIL (secondary screen)
+      =========================================================== -->
+      <section id="screen-semester-detail" class="screen" data-screen="semester-detail">
+        <header class="topbar">
+          <button class="icon-btn" id="semester-detail-back-btn" type="button" aria-label="Go back">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
+          </button>
+          <div class="topbar__text topbar__text--center">
+            <h1 class="topbar__title" id="semester-detail-name">Semester</h1>
+          </div>
+          <div class="topbar__actions">
+            <button class="icon-btn" id="semester-detail-edit-btn" type="button" aria-label="Edit semester">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"></path></svg>
+            </button>
+            <button class="icon-btn icon-btn--danger" id="semester-detail-delete-btn" type="button" aria-label="Delete semester">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path><path d="M10 11v6"></path><path d="M14 11v6"></path><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"></path></svg>
+            </button>
+          </div>
+        </header>
+
+        <section class="card glass-card summary-strip">
+          <div class="summary-strip__item">
+            <span class="summary-strip__value" id="semester-detail-gpa">0.00</span>
+            <span class="summary-strip__label">Semester GPA</span>
+          </div>
+          <div class="summary-strip__divider" aria-hidden="true"></div>
+          <div class="summary-strip__item">
+            <span class="summary-strip__value" id="semester-detail-credits">0</span>
+            <span class="summary-strip__label">Credits</span>
+          </div>
+        </section>
+
+        <section class="card">
+          <div class="card__header">
+            <h2 class="card__title">Courses</h2>
+            <button class="link-btn" id="semester-detail-add-course-btn" type="button">+ Add Course</button>
+          </div>
+          <div class="course-list" id="semester-detail-course-list">
+            <!-- Populated by JS -->
+          </div>
+          <div class="empty-state empty-state--compact" id="semester-detail-empty-state">
+            <p class="empty-state__text">No courses added yet. Add your first course above.</p>
+          </div>
+        </section>
+
+        <div class="nav-spacer" aria-hidden="true"></div>
+      </section>
+
+      <!-- ==========================================================
+           SCREEN: GPA CALCULATOR (scratchpad, unsaved)
+      =========================================================== -->
+      <section id="screen-calculator" class="screen" data-screen="calculator">
+        <header class="topbar">
+          <div class="topbar__text">
+            <p class="topbar__eyebrow">Scratchpad</p>
+            <h1 class="topbar__title">GPA Calculator</h1>
+          </div>
+          <button class="icon-btn" id="calculator-clear-btn" type="button" aria-label="Clear all courses">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"></polyline><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path></svg>
+          </button>
+        </header>
+
+        <section class="card glass-card live-gpa-card">
+          <span class="live-gpa-card__label">Live GPA</span>
+          <span class="live-gpa-card__value" id="calculator-live-gpa">0.00</span>
+          <span class="live-gpa-card__sub" id="calculator-live-credits">0 credits total</span>
+        </section>
+
+        <section class="card">
+          <div class="card__header">
+            <h2 class="card__title">Courses</h2>
+          </div>
+          <div class="course-form-list" id="calculator-course-list">
+            <!-- Populated by JS: repeating course input rows -->
+          </div>
+          <button class="btn btn--dashed" id="calculator-add-course-btn" type="button">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+            Add Course
+          </button>
+        </section>
+
+        <div class="nav-spacer" aria-hidden="true"></div>
+      </section>
+
+      <!-- ==========================================================
+           SCREEN: TARGET CGPA (secondary screen)
+      =========================================================== -->
+      <section id="screen-target" class="screen" data-screen="target">
+        <header class="topbar">
+          <button class="icon-btn" id="target-back-btn" type="button" aria-label="Go back">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
+          </button>
+          <div class="topbar__text topbar__text--center">
+            <h1 class="topbar__title">Target CGPA</h1>
+          </div>
+          <div class="topbar__actions" aria-hidden="true"></div>
+        </header>
+
+        <section class="card">
+          <form class="form" id="target-form">
+            <div class="form-field">
+              <label class="form-field__label" for="target-current-cgpa">Current CGPA</label>
+              <input class="form-field__input" type="number" id="target-current-cgpa" step="0.01" min="0" placeholder="e.g. 3.20" inputmode="decimal" />
+            </div>
+            <div class="form-field">
+              <label class="form-field__label" for="target-completed-credits">Completed Credits</label>
+              <input class="form-field__input" type="number" id="target-completed-credits" step="1" min="0" placeholder="e.g. 60" inputmode="numeric" />
+            </div>
+            <div class="form-field">
+              <label class="form-field__label" for="target-remaining-credits">Remaining Credits</label>
+              <input class="form-field__input" type="number" id="target-remaining-credits" step="1" min="1" placeholder="e.g. 30" inputmode="numeric" />
+            </div>
+            <div class="form-field">
+              <label class="form-field__label" for="target-goal-cgpa">Target CGPA</label>
+              <input class="form-field__input" type="number" id="target-goal-cgpa" step="0.01" min="0" placeholder="e.g. 3.50" inputmode="decimal" />
+            </div>
+            <button class="btn btn--primary btn--block" id="target-calculate-btn" type="submit">Calculate Required GPA</button>
+          </form>
+        </section>
+
+        <section class="card glass-card result-card" id="target-result-card" hidden>
+          <span class="result-card__label" id="target-result-label">Required GPA</span>
+          <span class="result-card__value" id="target-result-value">0.00</span>
+          <p class="result-card__note" id="target-result-note"></p>
+        </section>
+
+        <div class="nav-spacer" aria-hidden="true"></div>
+      </section>
+
+      <!-- ==========================================================
+           SCREEN: TREND
+      =========================================================== -->
+      <section id="screen-trend" class="screen" data-screen="trend">
+        <header class="topbar">
+          <div class="topbar__text">
+            <p class="topbar__eyebrow">Insights</p>
+            <h1 class="topbar__title">GPA Trend</h1>
+          </div>
+        </header>
+
+        <section class="card glass-card">
+          <div class="trend-chart-wrap">
+            <canvas id="trend-chart" height="220"></canvas>
+          </div>
+          <p class="empty-inline" id="trend-empty">Add at least 2 semesters to see your trend chart.</p>
+        </section>
+
+        <section class="stats-row stats-row--triple">
+          <div class="stat-card glass-card">
+            <span class="stat-card__value stat-card__value--accent" id="trend-highest">0.00</span>
+            <span class="stat-card__label">Highest</span>
+          </div>
+          <div class="stat-card glass-card">
+            <span class="stat-card__value" id="trend-average">0.00</span>
+            <span class="stat-card__label">Average</span>
+          </div>
+          <div class="stat-card glass-card">
+            <span class="stat-card__value stat-card__value--danger" id="trend-lowest">0.00</span>
+            <span class="stat-card__label">Lowest</span>
+          </div>
+        </section>
+
+        <div class="nav-spacer" aria-hidden="true"></div>
+      </section>
+
+      <!-- ==========================================================
+           SCREEN: SETTINGS
+      =========================================================== -->
+      <section id="screen-settings" class="screen" data-screen="settings">
+        <header class="topbar">
+          <div class="topbar__text">
+            <p class="topbar__eyebrow">Preferences</p>
+            <h1 class="topbar__title">Settings</h1>
+          </div>
+        </header>
+
+        <section class="card">
+          <div class="card__header">
+            <h2 class="card__title">Profile</h2>
+          </div>
+          <div class="form-field">
+            <label class="form-field__label" for="settings-student-name">Your Name</label>
+            <input class="form-field__input" type="text" id="settings-student-name" placeholder="Enter your name" maxlength="30" />
+          </div>
+        </section>
+
+        <section class="card">
+          <div class="card__header">
+            <h2 class="card__title">Grading Scale</h2>
+          </div>
+          <div class="segmented-control" id="settings-grading-scale" role="radiogroup" aria-label="Grading scale">
+            <button class="segmented-control__option" type="button" data-scale="4.0" role="radio" aria-checked="true">4.0 Scale</button>
+            <button class="segmented-control__option" type="button" data-scale="5.0" role="radio" aria-checked="false">5.0 Scale</button>
+            <button class="segmented-control__option" type="button" data-scale="10.0" role="radio" aria-checked="false">10.0 Scale</button>
+          </div>
+          <p class="field-hint">Changing scale re-maps existing grades to the closest equivalent.</p>
+        </section>
+
+        <section class="card">
+          <div class="card__header">
+            <h2 class="card__title">Backup</h2>
+          </div>
+          <div class="settings-row">
+            <div class="settings-row__text">
+              <span class="settings-row__title">Export Data</span>
+              <span class="settings-row__desc">Save all your data as a JSON file</span>
+            </div>
+            <button class="btn btn--ghost" id="settings-export-btn" type="button">Export</button>
+          </div>
+          <div class="settings-row">
+            <div class="settings-row__text">
+              <span class="settings-row__title">Import Data</span>
+              <span class="settings-row__desc">Restore from a backup JSON file</span>
+            </div>
+            <button class="btn btn--ghost" id="settings-import-btn" type="button">Import</button>
+            <input type="file" id="settings-import-input" accept="application/json" hidden />
+          </div>
+        </section>
+
+        <section class="card">
+          <div class="card__header">
+            <h2 class="card__title">Danger Zone</h2>
+          </div>
+          <div class="settings-row">
+            <div class="settings-row__text">
+              <span class="settings-row__title">Reset All Data</span>
+              <span class="settings-row__desc">Permanently delete every semester and course</span>
+            </div>
+            <button class="btn btn--danger" id="settings-reset-btn" type="button">Reset</button>
+          </div>
+        </section>
+
+        <section class="card">
+          <div class="card__header">
+            <h2 class="card__title">About</h2>
+          </div>
+          <p class="about-text">GradeTrack helps students track GPA and CGPA with clarity — semester by semester, course by course.</p>
+          <div class="settings-row settings-row--static">
+            <span class="settings-row__title">Version</span>
+            <span class="settings-row__desc" id="settings-version">1.0.0</span>
+          </div>
+        </section>
+
+        <div class="nav-spacer" aria-hidden="true"></div>
+      </section>
+
+    </main>
+
+    <!-- ============================================================
+         FLOATING BOTTOM NAVIGATION
+    ============================================================= -->
+    <nav class="bottom-nav" id="bottom-nav">
+      <button class="bottom-nav__item is-active" data-nav="dashboard" type="button" aria-label="Dashboard">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9.5 12 3l9 6.5"></path><path d="M5 10v10a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1V10"></path></svg>
+      </button>
+      <button class="bottom-nav__item" data-nav="semesters" type="button" aria-label="Semesters">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path></svg>
+      </button>
+      <button class="bottom-nav__item bottom-nav__item--fab" data-nav="calculator" type="button" aria-label="GPA Calculator">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="2" width="16" height="20" rx="2"></rect><line x1="8" y1="7" x2="16" y2="7"></line><line x1="8" y1="12" x2="8" y2="12"></line><line x1="12" y1="12" x2="12" y2="12"></line><line x1="16" y1="12" x2="16" y2="12"></line></svg>
+      </button>
+      <button class="bottom-nav__item" data-nav="trend" type="button" aria-label="Trend">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 17 9 11 13 15 21 6"></polyline><polyline points="14 6 21 6 21 13"></polyline></svg>
+      </button>
+      <button class="bottom-nav__item" data-nav="settings" type="button" aria-label="Settings">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"></path></svg>
+      </button>
+    </nav>
+
+    <!-- ============================================================
+         MODAL: ADD / EDIT COURSE (used from Semester Detail)
+    ============================================================= -->
+    <div class="modal-overlay" id="modal-overlay-course" hidden>
+      <div class="modal glass-card" role="dialog" aria-modal="true" aria-labelledby="modal-course-title">
+        <div class="modal__handle" aria-hidden="true"></div>
+        <h2 class="modal__title" id="modal-course-title">Add Course</h2>
+        <form class="form" id="course-form">
+          <div class="form-field">
+            <label class="form-field__label" for="course-form-name">Course Name</label>
+            <input class="form-field__input" type="text" id="course-form-name" placeholder="e.g. Data Structures" maxlength="60" required />
+          </div>
+          <div class="form-field">
+            <label class="form-field__label" for="course-form-credits">Credit Hours</label>
+            <input class="form-field__input" type="number" id="course-form-credits" min="1" max="6" step="1" placeholder="e.g. 3" inputmode="numeric" required />
+          </div>
+          <div class="form-field">
+            <label class="form-field__label" for="course-form-grade">Grade</label>
+            <select class="form-field__input form-field__select" id="course-form-grade" required>
+              <!-- Options injected by JS based on active grading scale -->
+            </select>
+          </div>
+          <p class="form-error" id="course-form-error" hidden></p>
+          <div class="modal__actions">
+            <button class="btn btn--ghost" type="button" id="course-form-cancel-btn">Cancel</button>
+            <button class="btn btn--primary" type="submit" id="course-form-submit-btn">Save Course</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- ============================================================
+         MODAL: ADD / EDIT SEMESTER
+    ============================================================= -->
+    <div class="modal-overlay" id="modal-overlay-semester" hidden>
+      <div class="modal glass-card" role="dialog" aria-modal="true" aria-labelledby="modal-semester-title">
+        <div class="modal__handle" aria-hidden="true"></div>
+        <h2 class="modal__title" id="modal-semester-title">Add Semester</h2>
+        <form class="form" id="semester-form">
+          <div class="form-field">
+            <label class="form-field__label" for="semester-form-name">Semester Name</label>
+            <input class="form-field__input" type="text" id="semester-form-name" placeholder="e.g. Fall 2025" maxlength="40" required />
+          </div>
+          <p class="form-error" id="semester-form-error" hidden></p>
+          <div class="modal__actions">
+            <button class="btn btn--ghost" type="button" id="semester-form-cancel-btn">Cancel</button>
+            <button class="btn btn--primary" type="submit" id="semester-form-submit-btn">Save Semester</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- ============================================================
+         MODAL: CONFIRMATION (delete / reset)
+    ============================================================= -->
+    <div class="modal-overlay" id="modal-overlay-confirm" hidden>
+      <div class="modal modal--confirm glass-card" role="alertdialog" aria-modal="true" aria-labelledby="modal-confirm-title">
+        <h2 class="modal__title" id="modal-confirm-title">Are you sure?</h2>
+        <p class="modal__text" id="modal-confirm-text">This action cannot be undone.</p>
+        <div class="modal__actions">
+          <button class="btn btn--ghost" type="button" id="modal-confirm-cancel-btn">Cancel</button>
+          <button class="btn btn--danger" type="button" id="modal-confirm-ok-btn">Delete</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================================================
+         TOAST NOTIFICATIONS
+    ============================================================= -->
+    <div class="toast-container" id="toast-container" aria-live="polite"></div>
+
+  </div>
+
+  <!-- App script -->
+  <script src="script.js"></script>
+</body>
+  </html>
+     
