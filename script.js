@@ -91,7 +91,16 @@ GradeTrack.Utils = (function () {
     return div.innerHTML;
   }
 
-  return { generateId, formatGPA, clamp, qs, qsa, escapeHTML };
+  // Submits a form by id — used by Telegram's MainButton, which
+  // sits outside the form and needs to trigger it programmatically.
+  function triggerFormSubmit(formId) {
+    const form = document.getElementById(formId);
+    if (!form) return;
+    if (form.requestSubmit) form.requestSubmit();
+    else form.dispatchEvent(new Event('submit', { cancelable: true }));
+  }
+
+  return { generateId, formatGPA, clamp, qs, qsa, escapeHTML, triggerFormSubmit };
 })();
 
 /* ================================================================
@@ -126,6 +135,11 @@ GradeTrack.Telegram = (function () {
   function hapticNotification(type) {
     if (!tg || !tg.HapticFeedback) return;
     tg.HapticFeedback.notificationOccurred(type || 'success');
+  }
+
+  function hapticSelection() {
+    if (!tg || !tg.HapticFeedback) return;
+    tg.HapticFeedback.selectionChanged();
   }
 
   let backButtonHandler = null;
@@ -175,7 +189,7 @@ GradeTrack.Telegram = (function () {
   }
 
   return {
-    tg, init, applyTheme, hapticImpact, hapticNotification,
+    tg, init, applyTheme, hapticImpact, hapticNotification, hapticSelection,
     showBackButton, hideBackButton, setMainButton, hideMainButton,
     getTelegramUserFirstName
   };
@@ -363,6 +377,9 @@ GradeTrack.Modal = (function () {
     const el = overlays[name];
     if (!el) return;
     el.hidden = true;
+    if (name === 'course' || name === 'semester') {
+      GradeTrack.Telegram.hideMainButton();
+    }
   }
 
   function closeAll() { Object.keys(overlays).forEach(close); }
@@ -459,6 +476,11 @@ GradeTrack.Router = (function () {
     } else {
       GradeTrack.Telegram.hideBackButton();
     }
+
+    // Default MainButton off on every navigation; screens that need
+    // it (Target CGPA) re-show it inside their own onEnter hook,
+    // which runs next via runHooks().
+    GradeTrack.Telegram.hideMainButton();
 
     runHooks(screenName);
   }
@@ -1692,9 +1714,15 @@ GradeTrack.Semesters = (function () {
     if (nameInput) nameInput.value = '';
     if (errorEl) errorEl.hidden = true;
     GradeTrack.Modal.open('semester');
+    GradeTrack.Telegram.setMainButton('Save Semester', function () {
+      GradeTrack.Utils.triggerFormSubmit('semester-form');
+    });
   }
 
   function bindButtons() {
+
+
+     
     const addBtn = document.getElementById('semesters-add-btn');
     const emptyAddBtn = document.getElementById('semesters-empty-add-btn');
     if (addBtn) addBtn.addEventListener('click', openAddModal);
@@ -1772,8 +1800,13 @@ GradeTrack.SemesterDetail = (function () {
       if (nameInput) nameInput.value = semester.name;
       if (errorEl) errorEl.hidden = true;
       GradeTrack.Modal.open('semester');
+      GradeTrack.Telegram.setMainButton('Save Semester', function () {
+        GradeTrack.Utils.triggerFormSubmit('semester-form');
+      });
     });
 
+
+     
     if (deleteBtn) deleteBtn.addEventListener('click', function () {
       const id = GradeTrack.Selection.getSemesterId();
       const semester = GradeTrack.Semesters.getSemesterById(GradeTrack.State.get(), id);
@@ -1860,6 +1893,8 @@ GradeTrack.SemesterForm = (function () {
     errorEl.hidden = false;
   }
 
+
+   
   function handleSubmit(e) {
     e.preventDefault();
     const nameInput = document.getElementById('semester-form-name');
@@ -1867,31 +1902,39 @@ GradeTrack.SemesterForm = (function () {
     if (!name) { showError('Please enter a semester name.'); return; }
 
     const editingId = GradeTrack.Selection.getSemesterId();
+    const state = GradeTrack.State.get();
+    const isDuplicate = state.semesters.some(function (s) {
+      return s.id !== editingId && s.name.trim().toLowerCase() === name.toLowerCase();
+    });
+    const duplicateNote = isDuplicate ? ' (note: another semester has this name)' : '';
 
     if (!editingId) {
       const newId = GradeTrack.Utils.generateId();
-      GradeTrack.State.mutate(function (state) {
-        state.semesters.push({
+      GradeTrack.State.mutate(function (s) {
+        s.semesters.push({
           id: newId,
           name: name,
-          order: state.semesters.length,
+          order: s.semesters.length,
           courses: []
         });
       });
       GradeTrack.Modal.close('semester');
-      GradeTrack.Toast.show('Semester added', 'success');
+      GradeTrack.Toast.show('Semester added' + duplicateNote, 'success');
       GradeTrack.Selection.setSemesterId(newId);
       GradeTrack.Router.navigate('semester-detail');
     } else {
-      GradeTrack.State.mutate(function (state) {
-        const semester = GradeTrack.Semesters.getSemesterById(state, editingId);
+      GradeTrack.State.mutate(function (s) {
+        const semester = GradeTrack.Semesters.getSemesterById(s, editingId);
         if (semester) semester.name = name;
       });
       GradeTrack.Modal.close('semester');
-      GradeTrack.Toast.show('Semester updated', 'success');
+      GradeTrack.Toast.show('Semester updated' + duplicateNote, 'success');
     }
   }
 
+
+
+   
   function init() {
     const form = document.getElementById('semester-form');
     if (form) form.addEventListener('submit', handleSubmit);
@@ -1930,6 +1973,9 @@ GradeTrack.CourseForm = (function () {
     if (errorEl) errorEl.hidden = true;
     populateGradeOptions(GradeTrack.State.get());
     GradeTrack.Modal.open('course');
+    GradeTrack.Telegram.setMainButton('Save Course', function () {
+      GradeTrack.Utils.triggerFormSubmit('course-form');
+    });
   }
 
   function openForEdit(course) {
@@ -1946,6 +1992,9 @@ GradeTrack.CourseForm = (function () {
     populateGradeOptions(GradeTrack.State.get());
     if (gradeSelect) gradeSelect.value = course.grade;
     GradeTrack.Modal.open('course');
+    GradeTrack.Telegram.setMainButton('Save Course', function () {
+      GradeTrack.Utils.triggerFormSubmit('course-form');
+    });
   }
 
   function showError(message) {
@@ -1966,7 +2015,7 @@ GradeTrack.CourseForm = (function () {
     const grade = gradeSelect.value;
 
     if (!name) { showError('Please enter a course name.'); return; }
-    if (!credits || credits < 1 || credits > 6) { showError('Credit hours must be between 1 and 6.'); return; }
+    if (!credits || !Number.isInteger(credits) || credits < 1 || credits > 6) { showError('Credit hours must be a whole number between 1 and 6.'); return; }
     if (!grade) { showError('Please select a grade.'); return; }
 
     const semesterId = GradeTrack.Selection.getSemesterId();
