@@ -529,18 +529,15 @@ GradeTrack.Calc = (function () {
     return GradeTrack.Constants.GRADE_SCALES[key] || GradeTrack.Constants.GRADE_SCALES[GradeTrack.Constants.DEFAULT_SCALE];
   }
 
-  function pointForGrade(scale, gradeCode) {
-    const found = scale.grades.find(function (g) { return g.code === gradeCode; });
-    return found ? found.point : 0;
-  }
-
+  // Courses now store a raw numeric grade point directly (e.g. 3.50)
+  // instead of a letter code, so no lookup table is needed here.
   function computeSemesterGPA(semester, scale) {
     const courses = semester.courses || [];
     let totalPoints = 0;
     let totalCredits = 0;
     courses.forEach(function (course) {
       const credits = Number(course.credits) || 0;
-      const point = pointForGrade(scale, course.grade);
+      const point = Number(course.gradePoint) || 0;
       totalPoints += point * credits;
       totalCredits += credits;
     });
@@ -554,7 +551,7 @@ GradeTrack.Calc = (function () {
     (semesters || []).forEach(function (semester) {
       (semester.courses || []).forEach(function (course) {
         const credits = Number(course.credits) || 0;
-        const point = pointForGrade(scale, course.grade);
+        const point = Number(course.gradePoint) || 0;
         totalPoints += point * credits;
         totalCredits += credits;
       });
@@ -575,7 +572,7 @@ GradeTrack.Calc = (function () {
     return bands[bands.length - 1];
   }
 
-  return { getActiveScale, pointForGrade, computeSemesterGPA, computeCGPA, getAcademicStatus };
+  return { getActiveScale, computeSemesterGPA, computeCGPA, getAcademicStatus };
 })();
 
 /* ================================================================
