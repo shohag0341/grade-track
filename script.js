@@ -2254,6 +2254,294 @@ GradeTrack.Target = (function () {
 })();
 
 
+/* ================================================================
+   19. TREND MODULE
+================================================================= */
+GradeTrack.Trend = (function () {
+  let chart = null;
+
+  function render(state) {
+    const scale = GradeTrack.Calc.getActiveScale(state);
+    const semesters = state.semesters;
+    const canvas = document.getElementById('trend-chart');
+    const emptyEl = document.getElementById('trend-empty');
+
+    // Only semesters that actually have credited courses count
+    // toward the trend — an empty semester shouldn't show as a 0.
+    const points = semesters
+      .map(function (s) { return { name: s.name, info: GradeTrack.Calc.computeSemesterGPA(s, scale) }; })
+      .filter(function (p) { return p.info.totalCredits > 0; });
+
+    renderStats(points);
+
+    if (points.length < 2) {
+      if (canvas) canvas.style.display = 'none';
+      if (emptyEl) emptyEl.classList.add('is-visible');
+      if (chart) { chart.destroy(); chart = null; }
+      return;
+    }
+
+    if (canvas) canvas.style.display = 'block';
+    if (emptyEl) emptyEl.classList.remove('is-visible');
+
+    if (chart) chart.destroy();
+    if (!canvas || !window.Chart) return;
+
+    const ctx = canvas.getContext('2d');
+    const gradient = ctx.createLinearGradient(0, 0, 0, 220);
+    gradient.addColorStop(0, 'rgba(124, 92, 255, 0.35)');
+    gradient.addColorStop(1, 'rgba(124, 92, 255, 0)');
+
+    chart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: points.map(function (p) { return p.name; }),
+        datasets: [{
+          label: 'Semester GPA',
+          data: points.map(function (p) { return p.info.gpa; }),
+          borderColor: '#9E6CFF',
+          backgroundColor: gradient,
+          borderWidth: 2.5,
+          fill: true,
+          tension: 0.4,
+          pointRadius: 4,
+          pointBackgroundColor: '#7C5CFF',
+          pointBorderColor: '#FFFFFF',
+          pointBorderWidth: 1.5,
+          pointHoverRadius: 6
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            backgroundColor: '#101018',
+            titleColor: '#B8B8C7',
+            bodyColor: '#FFFFFF',
+            borderColor: 'rgba(255,255,255,0.09)',
+            borderWidth: 1,
+            padding: 10,
+            displayColors: false,
+            callbacks: {
+              label: function (ctx) { return 'GPA: ' + ctx.parsed.y.toFixed(2); }
+            }
+          }
+        },
+        scales: {
+          x: {
+            grid: { display: false },
+            ticks: { color: '#B8B8C7', font: { family: 'Poppins', size: 11 } }
+          },
+          y: {
+            min: 0,
+            max: scale.max,
+            grid: { color: 'rgba(255,255,255,0.06)' },
+            ticks: { color: '#B8B8C7', font: { family: 'Poppins', size: 11 }, stepSize: scale.max / 4 }
+          }
+        }
+      }
+    });
+  }
+
+  function renderStats(points) {
+    const highestEl = document.getElementById('trend-highest');
+    const averageEl = document.getElementById('trend-average');
+    const lowestEl = document.getElementById('trend-lowest');
+    if (!highestEl || !averageEl || !lowestEl) return;
+
+    if (points.length === 0) {
+      highestEl.textContent = '0.00';
+      averageEl.textContent = '0.00';
+      lowestEl.textContent = '0.00';
+      return;
+    }
+
+    const gpas = points.map(function (p) { return p.info.gpa; });
+    const highest = Math.max.apply(null, gpas);
+    const lowest = Math.min.apply(null, gpas);
+    const average = gpas.reduce(function (sum, g) { return sum + g; }, 0) / gpas.length;
+
+    highestEl.textContent = GradeTrack.Utils.formatGPA(highest);
+    averageEl.textContent = GradeTrack.Utils.formatGPA(average);
+    lowestEl.textContent = GradeTrack.Utils.formatGPA(lowest);
+  }
+
+  function init() {
+    GradeTrack.Router.onEnter('trend', render);
+    GradeTrack.State.subscribe(function (state) {
+      if (GradeTrack.Router.current() === 'trend') render(state);
+    });
+  }
+
+  return { init };
+})();
+
+
+
+
+/* ================================================================
+   20. SETTINGS MODULE
+================================================================= */
+GradeTrack.Settings = (function () {
+
+  function render(state) {
+    const nameInput = document.getElementById('settings-student-name');
+    if (nameInput && document.activeElement !== nameInput) {
+      nameInput.value = state.settings.studentName || '';
+    }
+
+    const activeScale = state.settings.gradingScale || GradeTrack.Constants.DEFAULT_SCALE;
+    GradeTrack.Utils.qsa('.segmented-control__option').forEach(function (btn) {
+      const isActive = btn.getAttribute('data-scale') === activeScale;
+      btn.setAttribute('aria-checked', isActive ? 'true' : 'false');
+    });
+
+    const versionEl = document.getElementById('settings-version');
+    if (versionEl) versionEl.textContent = GradeTrack.Constants.APP_VERSION;
+  }
+
+  // Re-maps every course's grade to the closest equivalent in the
+  // new scale, based on how far up its old scale it sat (ratio of
+  // point to max) — so an A- (3.7/4.0 = 92.5%) lands on the new
+  // scale's grade nearest that same percentage.
+  function remapGrades(semesters, oldScale, newScale) {
+    semesters.forEach(function (semester) {
+      (semester.courses || []).forEach(function (course) {
+        const oldPoint = GradeTrack.Calc.pointForGrade(oldScale, course.grade);
+        const ratio = oldScale.max > 0 ? oldPoint / oldScale.max : 0;
+        const targetPoint = ratio * newScale.max;
+
+        let closest = newScale.grades[0];
+        let smallestDiff = Math.abs(closest.point - targetPoint);
+        newScale.grades.forEach(function (g) {
+          const diff = Math.abs(g.point - targetPoint);
+          if (diff < smallestDiff) {
+            smallestDiff = diff;
+            closest = g;
+          }
+        });
+        course.grade = closest.code;
+      });
+    });
+  }
+
+  function bindStudentNameInput() {
+    const input = document.getElementById('settings-student-name');
+    if (!input) return;
+    input.addEventListener('change', function () {
+      const value = input.value.trim();
+      GradeTrack.State.mutate(function (state) {
+        state.settings.studentName = value;
+      });
+    });
+  }
+
+  function bindGradingScaleButtons() {
+    GradeTrack.Utils.qsa('.segmented-control__option').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        const newScaleKey = btn.getAttribute('data-scale');
+        const state = GradeTrack.State.get();
+        const oldScaleKey = state.settings.gradingScale || GradeTrack.Constants.DEFAULT_SCALE;
+        if (newScaleKey === oldScaleKey) return;
+
+        const oldScale = GradeTrack.Constants.GRADE_SCALES[oldScaleKey];
+        const newScale = GradeTrack.Constants.GRADE_SCALES[newScaleKey];
+
+        GradeTrack.State.mutate(function (s) {
+          remapGrades(s.semesters, oldScale, newScale);
+          s.settings.gradingScale = newScaleKey;
+        });
+
+        GradeTrack.Toast.show('Switched to ' + newScale.label + ' — grades re-mapped', 'success');
+      });
+    });
+  }
+
+  function bindExportButton() {
+    const btn = document.getElementById('settings-export-btn');
+    if (!btn) return;
+    btn.addEventListener('click', function () {
+      GradeTrack.Storage.exportData(GradeTrack.State.get());
+      GradeTrack.Toast.show('Backup downloaded', 'success');
+    });
+  }
+
+  function bindImportButton() {
+    const btn = document.getElementById('settings-import-btn');
+    const fileInput = document.getElementById('settings-import-input');
+    if (!btn || !fileInput) return;
+
+    btn.addEventListener('click', function () { fileInput.click(); });
+
+    fileInput.addEventListener('change', function () {
+      const file = fileInput.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = function () {
+        let parsed;
+        try {
+          parsed = GradeTrack.Storage.parseImportedFile(reader.result);
+        } catch (err) {
+          GradeTrack.Toast.show(err.message, 'error');
+          fileInput.value = '';
+          return;
+        }
+
+        GradeTrack.Modal.confirm({
+          title: 'Replace all data?',
+          text: 'Importing this backup will overwrite your current semesters and settings. This cannot be undone.',
+          confirmLabel: 'Import',
+          onConfirm: function () {
+            GradeTrack.State.set(parsed);
+            GradeTrack.Toast.show('Backup imported', 'success');
+          }
+        });
+        fileInput.value = '';
+      };
+      reader.onerror = function () {
+        GradeTrack.Toast.show('Could not read that file.', 'error');
+        fileInput.value = '';
+      };
+      reader.readAsText(file);
+    });
+  }
+
+  function bindResetButton() {
+    const btn = document.getElementById('settings-reset-btn');
+    if (!btn) return;
+    btn.addEventListener('click', function () {
+      GradeTrack.Modal.confirm({
+        title: 'Reset all data?',
+        text: 'This permanently deletes every semester and course, and restores default settings.',
+        confirmLabel: 'Reset',
+        onConfirm: function () {
+          const fresh = GradeTrack.Storage.reset();
+          GradeTrack.State.set(fresh);
+          GradeTrack.Toast.show('All data has been reset', 'success');
+          GradeTrack.Router.navigate('dashboard');
+        }
+      });
+    });
+  }
+
+  function init() {
+    bindStudentNameInput();
+    bindGradingScaleButtons();
+    bindExportButton();
+    bindImportButton();
+    bindResetButton();
+
+    GradeTrack.Router.onEnter('settings', render);
+    GradeTrack.State.subscribe(function (state) {
+      if (GradeTrack.Router.current() === 'settings') render(state);
+    });
+  }
+
+  return { init };
+})();
 
 
 
@@ -2271,5 +2559,7 @@ document.addEventListener('DOMContentLoaded', function () {
   GradeTrack.SemesterForm.init();
   GradeTrack.CourseForm.init();
   GradeTrack.Calculator.init();
-  GradeTrack.Target.init();   // <-- add this line
+  GradeTrack.Target.init();
+  GradeTrack.Trend.init();
+  GradeTrack.Settings.init();   // <-- add this line
 });
