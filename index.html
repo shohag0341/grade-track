@@ -465,12 +465,17 @@
             <label class="form-field__label" for="course-form-credits">Credit Hours</label>
             <input class="form-field__input" type="number" id="course-form-credits" min="1" max="6" step="1" placeholder="e.g. 3" inputmode="numeric" required />
           </div>
+
+
+          
           <div class="form-field">
-            <label class="form-field__label" for="course-form-grade">Grade</label>
-            <select class="form-field__input form-field__select" id="course-form-grade" required>
-              <!-- Options injected by JS based on active grading scale -->
-            </select>
+            <label class="form-field__label" for="course-form-grade">Grade Point</label>
+            <input class="form-field__input" type="number" id="course-form-grade" step="0.01" min="0" placeholder="e.g. 3.50" inputmode="decimal" required />
           </div>
+
+
+
+          
           <p class="form-error" id="course-form-error" hidden></p>
           <div class="modal__actions">
             <button class="btn btn--ghost" type="button" id="course-form-cancel-btn">Cancel</button>
