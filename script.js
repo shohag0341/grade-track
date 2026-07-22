@@ -2006,6 +2006,150 @@ GradeTrack.CourseForm = (function () {
   return { init, openForAdd, openForEdit };
 })();
 
+
+
+
+
+/* ================================================================
+   17. CALCULATOR MODULE (GPA scratchpad — unsaved, unlimited rows)
+================================================================= */
+GradeTrack.Calculator = (function () {
+  let rows = [];
+
+  function createEmptyRow() {
+    return { id: GradeTrack.Utils.generateId(), name: '', credits: '', grade: '' };
+  }
+
+  function gradeOptionsHTML(scale, selected) {
+    return '<option value="">Grade</option>' + scale.grades.map(function (g) {
+      return '<option value="' + g.code + '"' + (g.code === selected ? ' selected' : '') + '>' + g.code + '</option>';
+    }).join('');
+  }
+
+  function rowHTML(row, scale) {
+    return (
+      '<div class="course-form-row" data-row-id="' + row.id + '">' +
+        '<input class="course-form-row__input" type="text" placeholder="Course name" maxlength="60" data-field="name" value="' + GradeTrack.Utils.escapeHTML(row.name) + '">' +
+        '<input class="course-form-row__input" type="number" placeholder="Cr" min="1" max="6" step="1" inputmode="numeric" data-field="credits" value="' + (row.credits || '') + '">' +
+        '<select class="course-form-row__input" data-field="grade">' + gradeOptionsHTML(scale, row.grade) + '</select>' +
+        '<button class="course-form-row__remove" type="button" data-remove-row aria-label="Remove course">' +
+          '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path></svg>' +
+        '</button>' +
+        '<p class="course-form-row__error" data-row-error></p>' +
+      '</div>'
+    );
+  }
+
+  function render(state) {
+    const scale = GradeTrack.Calc.getActiveScale(state);
+    const listEl = document.getElementById('calculator-course-list');
+    if (listEl) listEl.innerHTML = rows.map(function (r) { return rowHTML(r, scale); }).join('');
+    computeLiveGPA(scale);
+  }
+
+  function computeLiveGPA(scale) {
+    let totalPoints = 0;
+    let totalCredits = 0;
+    rows.forEach(function (r) {
+      const credits = Number(r.credits);
+      if (!r.grade || !credits || credits < 1 || credits > 6) return;
+      const point = GradeTrack.Calc.pointForGrade(scale, r.grade);
+      totalPoints += point * credits;
+      totalCredits += credits;
+    });
+    const gpa = totalCredits > 0 ? totalPoints / totalCredits : 0;
+    const gpaEl = document.getElementById('calculator-live-gpa');
+    const creditsEl = document.getElementById('calculator-live-credits');
+    if (gpaEl) gpaEl.textContent = GradeTrack.Utils.formatGPA(gpa);
+    if (creditsEl) creditsEl.textContent = totalCredits + (totalCredits === 1 ? ' credit total' : ' credits total');
+  }
+
+  function updateRowField(rowId, field, value) {
+    const row = rows.find(function (r) { return r.id === rowId; });
+    if (row) row[field] = value;
+  }
+
+  function bindListEvents() {
+    const listEl = document.getElementById('calculator-course-list');
+    if (!listEl) return;
+
+    // Text/number typing and grade selection both update in-memory
+    // row data without a full re-render, so the user never loses
+    // focus mid-keystroke.
+    listEl.addEventListener('input', function (e) {
+      const field = e.target.getAttribute('data-field');
+      const rowEl = e.target.closest('.course-form-row');
+      if (!field || !rowEl) return;
+      updateRowField(rowEl.getAttribute('data-row-id'), field, e.target.value);
+      computeLiveGPA(GradeTrack.Calc.getActiveScale(GradeTrack.State.get()));
+    });
+
+    // Credit-range validation, shown once the user leaves the field.
+    listEl.addEventListener('blur', function (e) {
+      if (e.target.getAttribute('data-field') !== 'credits') return;
+      const rowEl = e.target.closest('.course-form-row');
+      const errorEl = rowEl ? rowEl.querySelector('[data-row-error]') : null;
+      if (!errorEl) return;
+      const val = Number(e.target.value);
+      if (e.target.value && (val < 1 || val > 6)) {
+        errorEl.textContent = 'Credits must be between 1 and 6.';
+        errorEl.classList.add('is-visible');
+      } else {
+        errorEl.classList.remove('is-visible');
+      }
+    }, true);
+
+    listEl.addEventListener('click', function (e) {
+      const removeBtn = e.target.closest('[data-remove-row]');
+      if (!removeBtn) return;
+      const rowEl = removeBtn.closest('.course-form-row');
+      const id = rowEl.getAttribute('data-row-id');
+      rows = rows.length === 1 ? [createEmptyRow()] : rows.filter(function (r) { return r.id !== id; });
+      render(GradeTrack.State.get());
+    });
+  }
+
+  function bindAddButton() {
+    const btn = document.getElementById('calculator-add-course-btn');
+    if (btn) btn.addEventListener('click', function () {
+      rows.push(createEmptyRow());
+      render(GradeTrack.State.get());
+      GradeTrack.Telegram.hapticImpact('light');
+    });
+  }
+
+  function bindClearButton() {
+    const btn = document.getElementById('calculator-clear-btn');
+    if (btn) btn.addEventListener('click', function () {
+      const isAlreadyEmpty = rows.length === 1 && !rows[0].name && !rows[0].credits && !rows[0].grade;
+      if (isAlreadyEmpty) return;
+      GradeTrack.Modal.confirm({
+        title: 'Clear all courses?',
+        text: 'This resets the calculator scratchpad. Your saved semesters are not affected.',
+        confirmLabel: 'Clear',
+        onConfirm: function () {
+          rows = [createEmptyRow()];
+          render(GradeTrack.State.get());
+          GradeTrack.Toast.show('Calculator cleared', 'success');
+        }
+      });
+    });
+  }
+
+  function init() {
+    rows = [createEmptyRow()];
+    bindAddButton();
+    bindClearButton();
+    bindListEvents();
+    GradeTrack.Router.onEnter('calculator', render);
+    GradeTrack.State.subscribe(function (state) {
+      if (GradeTrack.Router.current() === 'calculator') render(state);
+    });
+  }
+
+  return { init };
+})();
+
 /* ================================================================
    17. BOOTSTRAP
 ================================================================= */
@@ -2019,8 +2163,8 @@ document.addEventListener('DOMContentLoaded', function () {
   GradeTrack.SemesterDetail.init();
   GradeTrack.SemesterForm.init();
   GradeTrack.CourseForm.init();
+  GradeTrack.Calculator.init();   // <-- add this line
 });
-
 
 
 
