@@ -2150,6 +2150,113 @@ GradeTrack.Calculator = (function () {
   return { init };
 })();
 
+
+
+
+
+/* ================================================================
+   18. TARGET CGPA MODULE
+================================================================= */
+GradeTrack.Target = (function () {
+
+  function autoFillFromSavedData(state) {
+    const scale = GradeTrack.Calc.getActiveScale(state);
+    const cgpaInfo = GradeTrack.Calc.computeCGPA(state.semesters, scale);
+
+    const currentInput = document.getElementById('target-current-cgpa');
+    const completedInput = document.getElementById('target-completed-credits');
+
+    // Only fill fields the user hasn't already typed into — never
+    // clobber an in-progress edit when this hook re-runs.
+    if (currentInput && currentInput.value === '' && cgpaInfo.totalCredits > 0) {
+      currentInput.value = GradeTrack.Utils.formatGPA(cgpaInfo.cgpa);
+    }
+    if (completedInput && completedInput.value === '' && cgpaInfo.totalCredits > 0) {
+      completedInput.value = cgpaInfo.totalCredits;
+    }
+  }
+
+  function render(state) {
+    autoFillFromSavedData(state);
+  }
+
+  function showError(message) {
+    // Reuses the toast system for form-level errors on this screen,
+    // since the form has no single dedicated error slot.
+    GradeTrack.Toast.show(message, 'error');
+  }
+
+  function handleSubmit(e) {
+    e.preventDefault();
+    const state = GradeTrack.State.get();
+    const scale = GradeTrack.Calc.getActiveScale(state);
+
+    const currentCGPA = Number(document.getElementById('target-current-cgpa').value);
+    const completedCredits = Number(document.getElementById('target-completed-credits').value);
+    const remainingCredits = Number(document.getElementById('target-remaining-credits').value);
+    const targetCGPA = Number(document.getElementById('target-goal-cgpa').value);
+
+    if (document.getElementById('target-current-cgpa').value === '' || isNaN(currentCGPA) || currentCGPA < 0 || currentCGPA > scale.max) {
+      showError('Enter a valid current CGPA (0 to ' + scale.max.toFixed(2) + ').'); return;
+    }
+    if (document.getElementById('target-completed-credits').value === '' || isNaN(completedCredits) || completedCredits < 0) {
+      showError('Enter valid completed credits.'); return;
+    }
+    if (document.getElementById('target-remaining-credits').value === '' || isNaN(remainingCredits) || remainingCredits < 1) {
+      showError('Remaining credits must be at least 1.'); return;
+    }
+    if (document.getElementById('target-goal-cgpa').value === '' || isNaN(targetCGPA) || targetCGPA < 0 || targetCGPA > scale.max) {
+      showError('Enter a valid target CGPA (0 to ' + scale.max.toFixed(2) + ').'); return;
+    }
+
+    const totalCreditsAfter = completedCredits + remainingCredits;
+    const requiredGPA = (targetCGPA * totalCreditsAfter - currentCGPA * completedCredits) / remainingCredits;
+
+    renderResult(requiredGPA, scale);
+    GradeTrack.Telegram.hapticNotification('success');
+  }
+
+  function renderResult(requiredGPA, scale) {
+    const cardEl = document.getElementById('target-result-card');
+    const valueEl = document.getElementById('target-result-value');
+    const noteEl = document.getElementById('target-result-note');
+    if (!cardEl || !valueEl || !noteEl) return;
+
+    cardEl.hidden = false;
+    valueEl.textContent = GradeTrack.Utils.formatGPA(requiredGPA);
+
+    if (requiredGPA <= 0) {
+      valueEl.style.color = 'var(--color-accent)';
+      noteEl.textContent = "You've already reached this target — any passing GPA from here keeps you there.";
+    } else if (requiredGPA > scale.max) {
+      valueEl.style.color = 'var(--color-danger)';
+      noteEl.textContent = 'Not achievable with your remaining credits — the maximum possible GPA is ' + scale.max.toFixed(2) + '. Try more remaining credits or a lower target.';
+    } else {
+      valueEl.style.color = 'var(--color-secondary)';
+      noteEl.textContent = 'Maintain at least this GPA across your remaining credits to reach your target CGPA.';
+    }
+  }
+
+  function bindBackButton() {
+    const backBtn = document.getElementById('target-back-btn');
+    if (backBtn) backBtn.addEventListener('click', function () { GradeTrack.Router.back(); });
+  }
+
+  function init() {
+    bindBackButton();
+    const form = document.getElementById('target-form');
+    if (form) form.addEventListener('submit', handleSubmit);
+
+    GradeTrack.Router.onEnter('target', render);
+  }
+
+  return { init };
+})();
+
+
+
+
+
 /* ================================================================
    17. BOOTSTRAP
 ================================================================= */
@@ -2163,11 +2270,6 @@ document.addEventListener('DOMContentLoaded', function () {
   GradeTrack.SemesterDetail.init();
   GradeTrack.SemesterForm.init();
   GradeTrack.CourseForm.init();
-  GradeTrack.Calculator.init();   // <-- add this line
+  GradeTrack.Calculator.init();
+  GradeTrack.Target.init();   // <-- add this line
 });
-
-
-
-
-
-
