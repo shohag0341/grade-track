@@ -2099,10 +2099,13 @@ GradeTrack.Calculator = (function () {
   function computeLiveGPA(scale) {
     let totalPoints = 0;
     let totalCredits = 0;
+
+     
     rows.forEach(function (r) {
       const credits = Number(r.credits);
-      if (!r.grade || !credits || credits < 1 || credits > 6) return;
+      if (!r.grade || !credits || !Number.isInteger(credits) || credits < 1 || credits > 6) return;
       const point = GradeTrack.Calc.pointForGrade(scale, r.grade);
+       
       totalPoints += point * credits;
       totalCredits += credits;
     });
@@ -2139,9 +2142,14 @@ GradeTrack.Calculator = (function () {
       const rowEl = e.target.closest('.course-form-row');
       const errorEl = rowEl ? rowEl.querySelector('[data-row-error]') : null;
       if (!errorEl) return;
+
+
+       
       const val = Number(e.target.value);
-      if (e.target.value && (val < 1 || val > 6)) {
-        errorEl.textContent = 'Credits must be between 1 and 6.';
+      if (e.target.value && (!Number.isInteger(val) || val < 1 || val > 6)) {
+        errorEl.textContent = 'Credits must be a whole number between 1 and 6.';
+
+         
         errorEl.classList.add('is-visible');
       } else {
         errorEl.classList.remove('is-visible');
@@ -2225,10 +2233,17 @@ GradeTrack.Target = (function () {
     }
   }
 
+
+   
   function render(state) {
     autoFillFromSavedData(state);
+    GradeTrack.Telegram.setMainButton('Calculate Required GPA', function () {
+      GradeTrack.Utils.triggerFormSubmit('target-form');
+    });
   }
 
+
+   
   function showError(message) {
     // Reuses the toast system for form-level errors on this screen,
     // since the form has no single dedicated error slot.
@@ -2488,9 +2503,14 @@ GradeTrack.Settings = (function () {
   }
 
   function bindGradingScaleButtons() {
-    GradeTrack.Utils.qsa('.segmented-control__option').forEach(function (btn) {
+
+     GradeTrack.Utils.qsa('.segmented-control__option').forEach(function (btn) {
       btn.addEventListener('click', function () {
+        GradeTrack.Telegram.hapticSelection();
         const newScaleKey = btn.getAttribute('data-scale');
+    
+
+         
         const state = GradeTrack.State.get();
         const oldScaleKey = state.settings.gradingScale || GradeTrack.Constants.DEFAULT_SCALE;
         if (newScaleKey === oldScaleKey) return;
