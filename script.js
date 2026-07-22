@@ -616,14 +616,14 @@ GradeTrack.Templates = (function () {
 
   function courseItemHTML(course) {
     const name = GradeTrack.Utils.escapeHTML(course.name);
-    const grade = GradeTrack.Utils.escapeHTML(course.grade);
+    const gradePoint = GradeTrack.Utils.formatGPA(course.gradePoint);
     return (
       '<div class="course-item">' +
         '<div class="course-item__info">' +
           '<div class="course-item__name">' + name + '</div>' +
           '<div class="course-item__meta">' + course.credits + ' credit' + (course.credits === 1 ? '' : 's') + '</div>' +
         '</div>' +
-        '<div class="course-item__grade">' + grade + '</div>' +
+        '<div class="course-item__grade">' + gradePoint + '</div>' +
         '<div class="course-item__actions">' +
           '<button class="course-item__action-btn" type="button" data-course-edit="' + course.id + '" aria-label="Edit course">' +
             '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"></path></svg>' +
@@ -1081,28 +1081,30 @@ GradeTrack.SemesterForm = (function () {
 /* ================================================================
    16. COURSE FORM MODULE
 ================================================================= */
+
 GradeTrack.CourseForm = (function () {
 
-  function populateGradeOptions(state) {
-    const select = document.getElementById('course-form-grade');
-    if (!select) return;
+  function configureGradeInput(state) {
+    const input = document.getElementById('course-form-grade');
+    if (!input) return;
     const scale = GradeTrack.Calc.getActiveScale(state);
-    select.innerHTML = scale.grades.map(function (g) {
-      return '<option value="' + g.code + '">' + g.code + ' (' + g.point.toFixed(1) + ')</option>';
-    }).join('');
+    input.max = scale.max;
+    input.placeholder = 'e.g. 3.50 (max ' + scale.max.toFixed(2) + ')';
   }
 
   function openForAdd() {
     const titleEl = document.getElementById('modal-course-title');
     const nameInput = document.getElementById('course-form-name');
     const creditsInput = document.getElementById('course-form-credits');
+    const gradeInput = document.getElementById('course-form-grade');
     const errorEl = document.getElementById('course-form-error');
     GradeTrack.Selection.setCourseId(null);
     if (titleEl) titleEl.textContent = 'Add Course';
     if (nameInput) nameInput.value = '';
     if (creditsInput) creditsInput.value = '';
+    if (gradeInput) gradeInput.value = '';
     if (errorEl) errorEl.hidden = true;
-    populateGradeOptions(GradeTrack.State.get());
+    configureGradeInput(GradeTrack.State.get());
     GradeTrack.Modal.open('course');
     GradeTrack.Telegram.setMainButton('Save Course', function () {
       GradeTrack.Utils.triggerFormSubmit('course-form');
@@ -1113,15 +1115,15 @@ GradeTrack.CourseForm = (function () {
     const titleEl = document.getElementById('modal-course-title');
     const nameInput = document.getElementById('course-form-name');
     const creditsInput = document.getElementById('course-form-credits');
-    const gradeSelect = document.getElementById('course-form-grade');
+    const gradeInput = document.getElementById('course-form-grade');
     const errorEl = document.getElementById('course-form-error');
     GradeTrack.Selection.setCourseId(course.id);
     if (titleEl) titleEl.textContent = 'Edit Course';
     if (nameInput) nameInput.value = course.name;
     if (creditsInput) creditsInput.value = course.credits;
     if (errorEl) errorEl.hidden = true;
-    populateGradeOptions(GradeTrack.State.get());
-    if (gradeSelect) gradeSelect.value = course.grade;
+    configureGradeInput(GradeTrack.State.get());
+    if (gradeInput) gradeInput.value = course.gradePoint;
     GradeTrack.Modal.open('course');
     GradeTrack.Telegram.setMainButton('Save Course', function () {
       GradeTrack.Utils.triggerFormSubmit('course-form');
@@ -1137,24 +1139,29 @@ GradeTrack.CourseForm = (function () {
 
   function handleSubmit(e) {
     e.preventDefault();
+    const state = GradeTrack.State.get();
+    const scale = GradeTrack.Calc.getActiveScale(state);
+
     const nameInput = document.getElementById('course-form-name');
     const creditsInput = document.getElementById('course-form-credits');
-    const gradeSelect = document.getElementById('course-form-grade');
+    const gradeInput = document.getElementById('course-form-grade');
 
     const name = (nameInput.value || '').trim();
     const credits = Number(creditsInput.value);
-    const grade = gradeSelect.value;
+    const gradePoint = Number(gradeInput.value);
 
     if (!name) { showError('Please enter a course name.'); return; }
     if (!credits || !Number.isInteger(credits) || credits < 1 || credits > 6) { showError('Credit hours must be a whole number between 1 and 6.'); return; }
-    if (!grade) { showError('Please select a grade.'); return; }
+    if (gradeInput.value === '' || isNaN(gradePoint) || gradePoint < 0 || gradePoint > scale.max) {
+      showError('Grade point must be between 0 and ' + scale.max.toFixed(2) + '.'); return;
+    }
 
     const semesterId = GradeTrack.Selection.getSemesterId();
     const courseId = GradeTrack.Selection.getCourseId();
     if (!semesterId) { showError('No semester selected.'); return; }
 
-    GradeTrack.State.mutate(function (state) {
-      const semester = GradeTrack.Semesters.getSemesterById(state, semesterId);
+    GradeTrack.State.mutate(function (s) {
+      const semester = GradeTrack.Semesters.getSemesterById(s, semesterId);
       if (!semester) return;
       if (!courseId) {
         semester.courses = semester.courses || [];
@@ -1162,14 +1169,14 @@ GradeTrack.CourseForm = (function () {
           id: GradeTrack.Utils.generateId(),
           name: name,
           credits: credits,
-          grade: grade
+          gradePoint: gradePoint
         });
       } else {
         const course = semester.courses.find(function (c) { return c.id === courseId; });
         if (course) {
           course.name = name;
           course.credits = credits;
-          course.grade = grade;
+          course.gradePoint = gradePoint;
         }
       }
     });
@@ -1185,7 +1192,6 @@ GradeTrack.CourseForm = (function () {
 
   return { init, openForAdd, openForEdit };
 })();
-
 
 
 
@@ -1297,6 +1303,125 @@ GradeTrack.Calculator = (function () {
     const btn = document.getElementById('calculator-clear-btn');
     if (btn) btn.addEventListener('click', function () {
       const isAlreadyEmpty = rows.length === 1 && !rows[0].name && !rows[0].credits && !rows[0].grade;
+      if (isAlreadyEmpty) return;
+      GradeTrack.Modal.confirm({
+        title: 'Clear all courses?',
+        text: 'This resets the calculator scratchpad. Your saved semesters are not affected.',
+        confirmLabel: 'Clear',
+GradeTrack.Calculator = (function () {
+  let rows = [];
+
+  function createEmptyRow() {
+    return { id: GradeTrack.Utils.generateId(), name: '', credits: '', gradePoint: '' };
+  }
+
+  function rowHTML(row, scale) {
+    return (
+      '<div class="course-form-row" data-row-id="' + row.id + '">' +
+        '<input class="course-form-row__input" type="text" placeholder="Course name" maxlength="60" data-field="name" value="' + GradeTrack.Utils.escapeHTML(row.name) + '">' +
+        '<input class="course-form-row__input" type="number" placeholder="Cr" min="1" max="6" step="1" inputmode="numeric" data-field="credits" value="' + (row.credits || '') + '">' +
+        '<input class="course-form-row__input" type="number" placeholder="0-' + scale.max.toFixed(1) + '" min="0" max="' + scale.max + '" step="0.01" inputmode="decimal" data-field="gradePoint" value="' + (row.gradePoint || '') + '">' +
+        '<button class="course-form-row__remove" type="button" data-remove-row aria-label="Remove course">' +
+          '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path></svg>' +
+        '</button>' +
+        '<p class="course-form-row__error" data-row-error></p>' +
+      '</div>'
+    );
+  }
+
+  function render(state) {
+    const scale = GradeTrack.Calc.getActiveScale(state);
+    const listEl = document.getElementById('calculator-course-list');
+    if (listEl) listEl.innerHTML = rows.map(function (r) { return rowHTML(r, scale); }).join('');
+    computeLiveGPA(scale);
+  }
+
+  function computeLiveGPA(scale) {
+    let totalPoints = 0;
+    let totalCredits = 0;
+    rows.forEach(function (r) {
+      const credits = Number(r.credits);
+      const point = Number(r.gradePoint);
+      if (r.gradePoint === '' || isNaN(point) || point < 0 || point > scale.max) return;
+      if (!credits || !Number.isInteger(credits) || credits < 1 || credits > 6) return;
+      totalPoints += point * credits;
+      totalCredits += credits;
+    });
+    const gpa = totalCredits > 0 ? totalPoints / totalCredits : 0;
+    const gpaEl = document.getElementById('calculator-live-gpa');
+    const creditsEl = document.getElementById('calculator-live-credits');
+    if (gpaEl) gpaEl.textContent = GradeTrack.Utils.formatGPA(gpa);
+    if (creditsEl) creditsEl.textContent = totalCredits + (totalCredits === 1 ? ' credit total' : ' credits total');
+  }
+
+  function updateRowField(rowId, field, value) {
+    const row = rows.find(function (r) { return r.id === rowId; });
+    if (row) row[field] = value;
+  }
+
+  function bindListEvents() {
+    const listEl = document.getElementById('calculator-course-list');
+    if (!listEl) return;
+
+    listEl.addEventListener('input', function (e) {
+      const field = e.target.getAttribute('data-field');
+      const rowEl = e.target.closest('.course-form-row');
+      if (!field || !rowEl) return;
+      updateRowField(rowEl.getAttribute('data-row-id'), field, e.target.value);
+      computeLiveGPA(GradeTrack.Calc.getActiveScale(GradeTrack.State.get()));
+    });
+
+    listEl.addEventListener('blur', function (e) {
+      const field = e.target.getAttribute('data-field');
+      const rowEl = e.target.closest('.course-form-row');
+      const errorEl = rowEl ? rowEl.querySelector('[data-row-error]') : null;
+      if (!errorEl) return;
+      const scale = GradeTrack.Calc.getActiveScale(GradeTrack.State.get());
+
+      if (field === 'credits') {
+        const val = Number(e.target.value);
+        if (e.target.value && (!Number.isInteger(val) || val < 1 || val > 6)) {
+          errorEl.textContent = 'Credits must be a whole number between 1 and 6.';
+          errorEl.classList.add('is-visible');
+        } else {
+          errorEl.classList.remove('is-visible');
+        }
+      }
+
+      if (field === 'gradePoint') {
+        const val = Number(e.target.value);
+        if (e.target.value && (isNaN(val) || val < 0 || val > scale.max)) {
+          errorEl.textContent = 'Grade point must be between 0 and ' + scale.max.toFixed(2) + '.';
+          errorEl.classList.add('is-visible');
+        } else {
+          errorEl.classList.remove('is-visible');
+        }
+      }
+    }, true);
+
+    listEl.addEventListener('click', function (e) {
+      const removeBtn = e.target.closest('[data-remove-row]');
+      if (!removeBtn) return;
+      const rowEl = removeBtn.closest('.course-form-row');
+      const id = rowEl.getAttribute('data-row-id');
+      rows = rows.length === 1 ? [createEmptyRow()] : rows.filter(function (r) { return r.id !== id; });
+      render(GradeTrack.State.get());
+    });
+  }
+
+  function bindAddButton() {
+    const btn = document.getElementById('calculator-add-course-btn');
+    if (btn) btn.addEventListener('click', function () {
+      rows.push(createEmptyRow());
+      render(GradeTrack.State.get());
+      GradeTrack.Telegram.hapticImpact('light');
+    });
+  }
+
+  function bindClearButton() {
+    const btn = document.getElementById('calculator-clear-btn');
+    if (btn) btn.addEventListener('click', function () {
+      const isAlreadyEmpty = rows.length === 1 && !rows[0].name && !rows[0].credits && !rows[0].gradePoint;
       if (isAlreadyEmpty) return;
       GradeTrack.Modal.confirm({
         title: 'Clear all courses?',
@@ -1569,27 +1694,17 @@ GradeTrack.Settings = (function () {
     if (versionEl) versionEl.textContent = GradeTrack.Constants.APP_VERSION;
   }
 
+  // Grade points are raw numbers now, so switching scales just
+  // proportionally rescales each course's point to the new max.
   function remapGrades(semesters, oldScale, newScale) {
     semesters.forEach(function (semester) {
       (semester.courses || []).forEach(function (course) {
-        const oldPoint = GradeTrack.Calc.pointForGrade(oldScale, course.grade);
+        const oldPoint = Number(course.gradePoint) || 0;
         const ratio = oldScale.max > 0 ? oldPoint / oldScale.max : 0;
-        const targetPoint = ratio * newScale.max;
-
-        let closest = newScale.grades[0];
-        let smallestDiff = Math.abs(closest.point - targetPoint);
-        newScale.grades.forEach(function (g) {
-          const diff = Math.abs(g.point - targetPoint);
-          if (diff < smallestDiff) {
-            smallestDiff = diff;
-            closest = g;
-          }
-        });
-        course.grade = closest.code;
+        course.gradePoint = Math.round(ratio * newScale.max * 100) / 100;
       });
     });
   }
-
   function bindStudentNameInput() {
     const input = document.getElementById('settings-student-name');
     if (!input) return;
