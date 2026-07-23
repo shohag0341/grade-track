@@ -10,9 +10,6 @@
   <!-- Telegram WebApp SDK -->
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
 
-  <!-- Chart.js -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
-
   <!-- Fonts: Poppins -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -36,8 +33,6 @@
 
     <!-- ============================================================
          SCREENS CONTAINER
-         Only one .screen has the `is-active` class at a time.
-         Router (script.js) toggles visibility.
     ============================================================= -->
     <main id="screens" class="screens">
 
@@ -55,7 +50,6 @@
           </button>
         </header>
 
-        <!-- Hero CGPA card -->
         <section class="hero-card glass-card" aria-labelledby="hero-cgpa-label">
           <div class="hero-card__ring-wrap">
             <svg class="hero-card__ring" viewBox="0 0 140 140" aria-hidden="true">
@@ -73,7 +67,6 @@
           </div>
         </section>
 
-        <!-- Quick stats row -->
         <section class="stats-row">
           <div class="stat-card glass-card">
             <span class="stat-card__value" id="dashboard-credits-value">0</span>
@@ -85,19 +78,15 @@
           </div>
         </section>
 
-        <!-- GPA trend mini preview -->
         <section class="card glass-card trend-preview" id="dashboard-trend-card">
           <div class="card__header">
             <h2 class="card__title">GPA Trend</h2>
             <button class="link-btn" data-nav="trend" type="button">View all</button>
           </div>
-          <div class="trend-preview__chart-wrap">
-            <canvas id="dashboard-trend-chart" height="90"></canvas>
-          </div>
+          <div class="trend-preview__chart-wrap" id="dashboard-trend-chart-wrap"></div>
           <p class="empty-inline" id="dashboard-trend-empty">Add at least 2 semesters to see your trend.</p>
         </section>
 
-        <!-- Quick actions -->
         <section class="card">
           <div class="card__header">
             <h2 class="card__title">Quick Actions</h2>
@@ -122,15 +111,12 @@
           </div>
         </section>
 
-        <!-- Recent semesters -->
         <section class="card">
           <div class="card__header">
             <h2 class="card__title">Recent Semesters</h2>
             <button class="link-btn" data-nav="semesters" type="button">See all</button>
           </div>
-          <div class="semester-list" id="dashboard-recent-semesters">
-            <!-- Populated by JS -->
-          </div>
+          <div class="semester-list" id="dashboard-recent-semesters"></div>
           <p class="empty-inline" id="dashboard-semesters-empty">No semesters yet. Add your first one to get started.</p>
         </section>
 
@@ -163,9 +149,7 @@
           </div>
         </section>
 
-        <div class="semester-list semester-list--full" id="semesters-full-list">
-          <!-- Populated by JS -->
-        </div>
+        <div class="semester-list semester-list--full" id="semesters-full-list"></div>
 
         <div class="empty-state" id="semesters-empty-state">
           <div class="empty-state__icon">
@@ -180,7 +164,7 @@
       </section>
 
       <!-- ==========================================================
-           SCREEN: SEMESTER DETAIL (secondary screen)
+           SCREEN: SEMESTER DETAIL
       =========================================================== -->
       <section id="screen-semester-detail" class="screen" data-screen="semester-detail">
         <header class="topbar">
@@ -217,9 +201,7 @@
             <h2 class="card__title">Courses</h2>
             <button class="link-btn" id="semester-detail-add-course-btn" type="button">+ Add Course</button>
           </div>
-          <div class="course-list" id="semester-detail-course-list">
-            <!-- Populated by JS -->
-          </div>
+          <div class="course-list" id="semester-detail-course-list"></div>
           <div class="empty-state empty-state--compact" id="semester-detail-empty-state">
             <p class="empty-state__text">No courses added yet. Add your first course above.</p>
           </div>
@@ -229,7 +211,7 @@
       </section>
 
       <!-- ==========================================================
-           SCREEN: GPA CALCULATOR (scratchpad, unsaved)
+           SCREEN: GPA CALCULATOR (scratchpad)
       =========================================================== -->
       <section id="screen-calculator" class="screen" data-screen="calculator">
         <header class="topbar">
@@ -252,9 +234,7 @@
           <div class="card__header">
             <h2 class="card__title">Courses</h2>
           </div>
-          <div class="course-form-list" id="calculator-course-list">
-            <!-- Populated by JS: repeating course input rows -->
-          </div>
+          <div class="course-form-list" id="calculator-course-list"></div>
           <button class="btn btn--dashed" id="calculator-add-course-btn" type="button">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
             Add Course
@@ -265,7 +245,7 @@
       </section>
 
       <!-- ==========================================================
-           SCREEN: TARGET CGPA (secondary screen)
+           SCREEN: TARGET CGPA
       =========================================================== -->
       <section id="screen-target" class="screen" data-screen="target">
         <header class="topbar">
@@ -321,9 +301,7 @@
         </header>
 
         <section class="card glass-card">
-          <div class="trend-chart-wrap">
-            <canvas id="trend-chart" height="220"></canvas>
-          </div>
+          <div class="trend-chart-wrap" id="trend-chart-wrap"></div>
           <p class="empty-inline" id="trend-empty">Add at least 2 semesters to see your trend chart.</p>
         </section>
 
@@ -348,7 +326,7 @@
       <!-- ==========================================================
            SCREEN: SETTINGS
       =========================================================== -->
-      <section id="screen-settings" class="screen" data-screen="settings">
+       <section id="screen-settings" class="screen" data-screen="settings">
         <header class="topbar">
           <div class="topbar__text">
             <p class="topbar__eyebrow">Preferences</p>
@@ -375,7 +353,7 @@
             <button class="segmented-control__option" type="button" data-scale="5.0" role="radio" aria-checked="false">5.0 Scale</button>
             <button class="segmented-control__option" type="button" data-scale="10.0" role="radio" aria-checked="false">10.0 Scale</button>
           </div>
-          <p class="field-hint">Changing scale re-maps existing grades to the closest equivalent.</p>
+          <p class="field-hint">Changing scale rescales existing grade points proportionally to the new maximum.</p>
         </section>
 
         <section class="card">
@@ -450,7 +428,7 @@
     </nav>
 
     <!-- ============================================================
-         MODAL: ADD / EDIT COURSE (used from Semester Detail)
+         MODAL: ADD / EDIT COURSE
     ============================================================= -->
     <div class="modal-overlay" id="modal-overlay-course" hidden>
       <div class="modal glass-card" role="dialog" aria-modal="true" aria-labelledby="modal-course-title">
@@ -465,17 +443,10 @@
             <label class="form-field__label" for="course-form-credits">Credit Hours</label>
             <input class="form-field__input" type="number" id="course-form-credits" min="1" max="6" step="1" placeholder="e.g. 3" inputmode="numeric" required />
           </div>
-
-
-          
           <div class="form-field">
             <label class="form-field__label" for="course-form-grade">Grade Point</label>
             <input class="form-field__input" type="number" id="course-form-grade" step="0.01" min="0" placeholder="e.g. 3.50" inputmode="decimal" required />
           </div>
-
-
-
-          
           <p class="form-error" id="course-form-error" hidden></p>
           <div class="modal__actions">
             <button class="btn btn--ghost" type="button" id="course-form-cancel-btn">Cancel</button>
@@ -507,7 +478,7 @@
     </div>
 
     <!-- ============================================================
-         MODAL: CONFIRMATION (delete / reset)
+         MODAL: CONFIRMATION
     ============================================================= -->
     <div class="modal-overlay" id="modal-overlay-confirm" hidden>
       <div class="modal modal--confirm glass-card" role="alertdialog" aria-modal="true" aria-labelledby="modal-confirm-title">
@@ -530,5 +501,4 @@
   <!-- App script -->
   <script src="script.js"></script>
 </body>
-  </html>
-     
+          </html>
