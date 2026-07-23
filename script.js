@@ -1,9 +1,5 @@
 /* ================================================================
    GRADETRACK — CORE APPLICATION SCRIPT
-   ================================================================
-   Single global namespace `GradeTrack` holding independent modules.
-   Feature screens register render hooks via
-   GradeTrack.Router.onEnter(screenName, callback).
 ================================================================= */
 
 window.GradeTrack = window.GradeTrack || {};
@@ -13,34 +9,9 @@ window.GradeTrack = window.GradeTrack || {};
 ================================================================= */
 GradeTrack.Constants = (function () {
   const GRADE_SCALES = {
-    '4.0': {
-      label: '4.0 Scale',
-      max: 4.0,
-      grades: [
-        { code: 'A+', point: 4.0 }, { code: 'A', point: 4.0 }, { code: 'A-', point: 3.7 },
-        { code: 'B+', point: 3.3 }, { code: 'B', point: 3.0 }, { code: 'B-', point: 2.7 },
-        { code: 'C+', point: 2.3 }, { code: 'C', point: 2.0 }, { code: 'C-', point: 1.7 },
-        { code: 'D+', point: 1.3 }, { code: 'D', point: 1.0 }, { code: 'D-', point: 0.7 },
-        { code: 'F', point: 0.0 }
-      ]
-    },
-    '5.0': {
-      label: '5.0 Scale',
-      max: 5.0,
-      grades: [
-        { code: 'A', point: 5.0 }, { code: 'B', point: 4.0 }, { code: 'C', point: 3.0 },
-        { code: 'D', point: 2.0 }, { code: 'E', point: 1.0 }, { code: 'F', point: 0.0 }
-      ]
-    },
-    '10.0': {
-      label: '10.0 Scale',
-      max: 10.0,
-      grades: [
-        { code: 'O', point: 10.0 }, { code: 'A+', point: 9.0 }, { code: 'A', point: 8.0 },
-        { code: 'B+', point: 7.0 }, { code: 'B', point: 6.0 }, { code: 'C', point: 5.0 },
-        { code: 'D', point: 4.0 }, { code: 'F', point: 0.0 }
-      ]
-    }
+    '4.0': { label: '4.0 Scale', max: 4.0 },
+    '5.0': { label: '5.0 Scale', max: 5.0 },
+    '10.0': { label: '10.0 Scale', max: 10.0 }
   };
 
   const DEFAULT_SCALE = '4.0';
@@ -119,9 +90,7 @@ GradeTrack.Telegram = (function () {
     try {
       tg.setHeaderColor('#09090F');
       tg.setBackgroundColor('#09090F');
-    } catch (e) {
-      // Older clients may not support these calls — safe to ignore.
-    }
+    } catch (e) {}
   }
 
   function hapticImpact(style) {
@@ -521,6 +490,8 @@ GradeTrack.Router = (function () {
 
 /* ================================================================
    9. CALC MODULE
+   Courses store a raw numeric grade point directly — no letter
+   lookup table needed.
 ================================================================= */
 GradeTrack.Calc = (function () {
 
@@ -529,8 +500,6 @@ GradeTrack.Calc = (function () {
     return GradeTrack.Constants.GRADE_SCALES[key] || GradeTrack.Constants.GRADE_SCALES[GradeTrack.Constants.DEFAULT_SCALE];
   }
 
-  // Courses now store a raw numeric grade point directly (e.g. 3.50)
-  // instead of a letter code, so no lookup table is needed here.
   function computeSemesterGPA(semester, scale) {
     const courses = semester.courses || [];
     let totalPoints = 0;
@@ -590,8 +559,6 @@ GradeTrack.Selection = (function () {
   };
 })();
 
-
-
 /* ================================================================
    11. TEMPLATES MODULE
 ================================================================= */
@@ -639,11 +606,92 @@ GradeTrack.Templates = (function () {
   return { semesterCardHTML, courseItemHTML };
 })();
 
+
+
+
 /* ================================================================
-   12. DASHBOARD MODULE
+   12. CHARTS MODULE
+   Hand-built SVG line chart — no external library, works
+   identically in any browser or Telegram WebView.
+================================================================= */
+GradeTrack.Charts = (function () {
+
+  function buildLineChartSVG(points, opts) {
+    const W = opts.width || 320;
+    const H = opts.height || 160;
+    const padX = 14;
+    const padTop = opts.showValues ? 26 : 12;
+    const padBottom = opts.showLabels ? 22 : 12;
+    const max = opts.max || 1;
+    const n = points.length;
+    const usableW = W - padX * 2;
+    const usableH = H - padTop - padBottom;
+    const stepX = n > 1 ? usableW / (n - 1) : 0;
+
+    const coords = points.map(function (p, i) {
+      const x = padX + stepX * i;
+      const ratio = max > 0 ? GradeTrack.Utils.clamp(p.value / max, 0, 1) : 0;
+      const y = padTop + usableH * (1 - ratio);
+      return { x: x, y: y, label: p.label, value: p.value };
+    });
+
+    const linePath = coords.map(function (c, i) {
+      return (i === 0 ? 'M' : 'L') + c.x.toFixed(1) + ',' + c.y.toFixed(1);
+    }).join(' ');
+
+    const floorY = (padTop + usableH).toFixed(1);
+    const areaPath = linePath + ' L' + coords[n - 1].x.toFixed(1) + ',' + floorY +
+      ' L' + coords[0].x.toFixed(1) + ',' + floorY + ' Z';
+
+    const gradId = 'gt-grad-' + Math.random().toString(36).slice(2, 9);
+
+    let gridLines = '';
+    if (opts.showGrid) {
+      for (let i = 0; i <= 3; i++) {
+        const y = (padTop + (usableH / 3) * i).toFixed(1);
+        gridLines += '<line x1="' + padX + '" y1="' + y + '" x2="' + (W - padX) + '" y2="' + y + '" stroke="rgba(255,255,255,0.07)" stroke-width="1"/>';
+      }
+    }
+
+    let labels = '';
+    if (opts.showLabels) {
+      labels = coords.map(function (c) {
+        return '<text x="' + c.x.toFixed(1) + '" y="' + (H - 5) + '" text-anchor="middle" font-size="9" fill="#B8B8C7" font-family="Poppins, sans-serif">' + GradeTrack.Utils.escapeHTML(c.label) + '</text>';
+      }).join('');
+    }
+
+    let values = '';
+    if (opts.showValues) {
+      values = coords.map(function (c) {
+        return '<text x="' + c.x.toFixed(1) + '" y="' + (c.y - 10).toFixed(1) + '" text-anchor="middle" font-size="10" font-weight="700" fill="#FFFFFF" font-family="Poppins, sans-serif">' + c.value.toFixed(2) + '</text>';
+      }).join('');
+    }
+
+    const dots = coords.map(function (c) {
+      return '<circle cx="' + c.x.toFixed(1) + '" cy="' + c.y.toFixed(1) + '" r="3.5" fill="#7C5CFF" stroke="#FFFFFF" stroke-width="1.2"/>';
+    }).join('');
+
+    return (
+      '<svg viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none" style="width:100%;height:100%;display:block;">' +
+        '<defs><linearGradient id="' + gradId + '" x1="0" y1="0" x2="0" y2="1">' +
+          '<stop offset="0%" stop-color="#7C5CFF" stop-opacity="0.35"/>' +
+          '<stop offset="100%" stop-color="#7C5CFF" stop-opacity="0"/>' +
+        '</linearGradient></defs>' +
+        gridLines +
+        '<path d="' + areaPath + '" fill="url(#' + gradId + ')" stroke="none"/>' +
+        '<path d="' + linePath + '" fill="none" stroke="#9E6CFF" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>' +
+        values + dots + labels +
+      '</svg>'
+    );
+  }
+
+  return { buildLineChartSVG };
+})();
+
+/* ================================================================
+   13. DASHBOARD MODULE
 ================================================================= */
 GradeTrack.Dashboard = (function () {
-  let miniChart = null;
 
   function getGreeting() {
     const hour = new Date().getHours();
@@ -688,57 +736,30 @@ GradeTrack.Dashboard = (function () {
   }
 
   function renderTrendPreview(state, scale) {
-    const canvas = document.getElementById('dashboard-trend-chart');
+    const wrapEl = document.getElementById('dashboard-trend-chart-wrap');
     const emptyEl = document.getElementById('dashboard-trend-empty');
     const semesters = state.semesters;
 
-    if (semesters.length < 2) {
-      if (canvas) canvas.style.display = 'none';
+    const points = semesters
+      .map(function (s) {
+        const info = GradeTrack.Calc.computeSemesterGPA(s, scale);
+        return { label: s.name, value: info.gpa, credits: info.totalCredits };
+      })
+      .filter(function (p) { return p.credits > 0; });
+
+    if (points.length < 2) {
+      if (wrapEl) wrapEl.innerHTML = '';
       if (emptyEl) emptyEl.classList.add('is-visible');
-      if (miniChart) { miniChart.destroy(); miniChart = null; }
       return;
     }
 
-    if (canvas) canvas.style.display = 'block';
     if (emptyEl) emptyEl.classList.remove('is-visible');
-
-    const labels = semesters.map(function (s) { return s.name; });
-    const data = semesters.map(function (s) { return GradeTrack.Calc.computeSemesterGPA(s, scale).gpa; });
-
-    if (miniChart) miniChart.destroy();
-    if (!canvas || !window.Chart) return;
-
-    const ctx = canvas.getContext('2d');
-    const gradient = ctx.createLinearGradient(0, 0, 0, 90);
-    gradient.addColorStop(0, 'rgba(124, 92, 255, 0.35)');
-    gradient.addColorStop(1, 'rgba(124, 92, 255, 0)');
-
-    miniChart = new Chart(ctx, {
-      type: 'line',
-      data: {
-        labels: labels,
-        datasets: [{
-          data: data,
-          borderColor: '#9E6CFF',
-          backgroundColor: gradient,
-          borderWidth: 2,
-          fill: true,
-          tension: 0.4,
-          pointRadius: 0,
-          pointHoverRadius: 4,
-          pointBackgroundColor: '#7C5CFF'
-        }]
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: { legend: { display: false }, tooltip: { enabled: true } },
-        scales: {
-          x: { display: false },
-          y: { display: false, min: 0, max: scale.max }
-        }
-      }
-    });
+    if (wrapEl) {
+      wrapEl.innerHTML = GradeTrack.Charts.buildLineChartSVG(points, {
+        width: 320, height: 90, max: scale.max,
+        showGrid: false, showLabels: false, showValues: false
+      });
+    }
   }
 
   function renderRecentSemesters(state, scale) {
@@ -812,7 +833,7 @@ GradeTrack.Dashboard = (function () {
 })();
 
 /* ================================================================
-   13. SEMESTERS MODULE
+   14. SEMESTERS MODULE
 ================================================================= */
 GradeTrack.Semesters = (function () {
 
@@ -882,8 +903,10 @@ GradeTrack.Semesters = (function () {
 
 
 
+
+
 /* ================================================================
-   14. SEMESTER DETAIL MODULE
+   15. SEMESTER DETAIL MODULE
 ================================================================= */
 GradeTrack.SemesterDetail = (function () {
 
@@ -1022,7 +1045,7 @@ GradeTrack.SemesterDetail = (function () {
 })();
 
 /* ================================================================
-   15. SEMESTER FORM MODULE
+   16. SEMESTER FORM MODULE
 ================================================================= */
 GradeTrack.SemesterForm = (function () {
 
@@ -1079,9 +1102,8 @@ GradeTrack.SemesterForm = (function () {
 })();
 
 /* ================================================================
-   16. COURSE FORM MODULE
+   17. COURSE FORM MODULE
 ================================================================= */
-
 GradeTrack.CourseForm = (function () {
 
   function configureGradeInput(state) {
@@ -1195,119 +1217,10 @@ GradeTrack.CourseForm = (function () {
 
 
 
+
 /* ================================================================
-   17. CALCULATOR MODULE
+   18. CALCULATOR MODULE
 ================================================================= */
-GradeTrack.Calculator = (function () {
-  let rows = [];
-
-  function createEmptyRow() {
-    return { id: GradeTrack.Utils.generateId(), name: '', credits: '', grade: '' };
-  }
-
-  function gradeOptionsHTML(scale, selected) {
-    return '<option value="">Grade</option>' + scale.grades.map(function (g) {
-      return '<option value="' + g.code + '"' + (g.code === selected ? ' selected' : '') + '>' + g.code + '</option>';
-    }).join('');
-  }
-
-  function rowHTML(row, scale) {
-    return (
-      '<div class="course-form-row" data-row-id="' + row.id + '">' +
-        '<input class="course-form-row__input" type="text" placeholder="Course name" maxlength="60" data-field="name" value="' + GradeTrack.Utils.escapeHTML(row.name) + '">' +
-        '<input class="course-form-row__input" type="number" placeholder="Cr" min="1" max="6" step="1" inputmode="numeric" data-field="credits" value="' + (row.credits || '') + '">' +
-        '<select class="course-form-row__input" data-field="grade">' + gradeOptionsHTML(scale, row.grade) + '</select>' +
-        '<button class="course-form-row__remove" type="button" data-remove-row aria-label="Remove course">' +
-          '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path></svg>' +
-        '</button>' +
-        '<p class="course-form-row__error" data-row-error></p>' +
-      '</div>'
-    );
-  }
-
-  function render(state) {
-    const scale = GradeTrack.Calc.getActiveScale(state);
-    const listEl = document.getElementById('calculator-course-list');
-    if (listEl) listEl.innerHTML = rows.map(function (r) { return rowHTML(r, scale); }).join('');
-    computeLiveGPA(scale);
-  }
-
-  function computeLiveGPA(scale) {
-    let totalPoints = 0;
-    let totalCredits = 0;
-    rows.forEach(function (r) {
-      const credits = Number(r.credits);
-      if (!r.grade || !credits || !Number.isInteger(credits) || credits < 1 || credits > 6) return;
-      const point = GradeTrack.Calc.pointForGrade(scale, r.grade);
-      totalPoints += point * credits;
-      totalCredits += credits;
-    });
-    const gpa = totalCredits > 0 ? totalPoints / totalCredits : 0;
-    const gpaEl = document.getElementById('calculator-live-gpa');
-    const creditsEl = document.getElementById('calculator-live-credits');
-    if (gpaEl) gpaEl.textContent = GradeTrack.Utils.formatGPA(gpa);
-    if (creditsEl) creditsEl.textContent = totalCredits + (totalCredits === 1 ? ' credit total' : ' credits total');
-  }
-
-  function updateRowField(rowId, field, value) {
-    const row = rows.find(function (r) { return r.id === rowId; });
-    if (row) row[field] = value;
-  }
-
-  function bindListEvents() {
-    const listEl = document.getElementById('calculator-course-list');
-    if (!listEl) return;
-
-    listEl.addEventListener('input', function (e) {
-      const field = e.target.getAttribute('data-field');
-      const rowEl = e.target.closest('.course-form-row');
-      if (!field || !rowEl) return;
-      updateRowField(rowEl.getAttribute('data-row-id'), field, e.target.value);
-      computeLiveGPA(GradeTrack.Calc.getActiveScale(GradeTrack.State.get()));
-    });
-
-    listEl.addEventListener('blur', function (e) {
-      if (e.target.getAttribute('data-field') !== 'credits') return;
-      const rowEl = e.target.closest('.course-form-row');
-      const errorEl = rowEl ? rowEl.querySelector('[data-row-error]') : null;
-      if (!errorEl) return;
-      const val = Number(e.target.value);
-      if (e.target.value && (!Number.isInteger(val) || val < 1 || val > 6)) {
-        errorEl.textContent = 'Credits must be a whole number between 1 and 6.';
-        errorEl.classList.add('is-visible');
-      } else {
-        errorEl.classList.remove('is-visible');
-      }
-    }, true);
-
-    listEl.addEventListener('click', function (e) {
-      const removeBtn = e.target.closest('[data-remove-row]');
-      if (!removeBtn) return;
-      const rowEl = removeBtn.closest('.course-form-row');
-      const id = rowEl.getAttribute('data-row-id');
-      rows = rows.length === 1 ? [createEmptyRow()] : rows.filter(function (r) { return r.id !== id; });
-      render(GradeTrack.State.get());
-    });
-  }
-
-  function bindAddButton() {
-    const btn = document.getElementById('calculator-add-course-btn');
-    if (btn) btn.addEventListener('click', function () {
-      rows.push(createEmptyRow());
-      render(GradeTrack.State.get());
-      GradeTrack.Telegram.hapticImpact('light');
-    });
-  }
-
-  function bindClearButton() {
-    const btn = document.getElementById('calculator-clear-btn');
-    if (btn) btn.addEventListener('click', function () {
-      const isAlreadyEmpty = rows.length === 1 && !rows[0].name && !rows[0].credits && !rows[0].grade;
-      if (isAlreadyEmpty) return;
-      GradeTrack.Modal.confirm({
-        title: 'Clear all courses?',
-        text: 'This resets the calculator scratchpad. Your saved semesters are not affected.',
-        confirmLabel: 'Clear',
 GradeTrack.Calculator = (function () {
   let rows = [];
 
@@ -1451,7 +1364,7 @@ GradeTrack.Calculator = (function () {
 })();
 
 /* ================================================================
-   18. TARGET CGPA MODULE
+   19. TARGET CGPA MODULE
 ================================================================= */
 GradeTrack.Target = (function () {
 
@@ -1549,92 +1462,38 @@ GradeTrack.Target = (function () {
 })();
 
 /* ================================================================
-   19. TREND MODULE
+   20. TREND MODULE
 ================================================================= */
 GradeTrack.Trend = (function () {
-  let chart = null;
 
   function render(state) {
     const scale = GradeTrack.Calc.getActiveScale(state);
     const semesters = state.semesters;
-    const canvas = document.getElementById('trend-chart');
+    const wrapEl = document.getElementById('trend-chart-wrap');
     const emptyEl = document.getElementById('trend-empty');
 
     const points = semesters
-      .map(function (s) { return { name: s.name, info: GradeTrack.Calc.computeSemesterGPA(s, scale) }; })
-      .filter(function (p) { return p.info.totalCredits > 0; });
+      .map(function (s) {
+        const info = GradeTrack.Calc.computeSemesterGPA(s, scale);
+        return { label: s.name, value: info.gpa, credits: info.totalCredits };
+      })
+      .filter(function (p) { return p.credits > 0; });
 
     renderStats(points);
 
     if (points.length < 2) {
-      if (canvas) canvas.style.display = 'none';
+      if (wrapEl) wrapEl.innerHTML = '';
       if (emptyEl) emptyEl.classList.add('is-visible');
-      if (chart) { chart.destroy(); chart = null; }
       return;
     }
 
-    if (canvas) canvas.style.display = 'block';
     if (emptyEl) emptyEl.classList.remove('is-visible');
-
-    if (chart) chart.destroy();
-    if (!canvas || !window.Chart) return;
-
-    const ctx = canvas.getContext('2d');
-    const gradient = ctx.createLinearGradient(0, 0, 0, 220);
-    gradient.addColorStop(0, 'rgba(124, 92, 255, 0.35)');
-    gradient.addColorStop(1, 'rgba(124, 92, 255, 0)');
-
-    chart = new Chart(ctx, {
-      type: 'line',
-      data: {
-        labels: points.map(function (p) { return p.name; }),
-        datasets: [{
-          label: 'Semester GPA',
-          data: points.map(function (p) { return p.info.gpa; }),
-          borderColor: '#9E6CFF',
-          backgroundColor: gradient,
-          borderWidth: 2.5,
-          fill: true,
-          tension: 0.4,
-          pointRadius: 4,
-          pointBackgroundColor: '#7C5CFF',
-          pointBorderColor: '#FFFFFF',
-          pointBorderWidth: 1.5,
-          pointHoverRadius: 6
-        }]
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {
-          legend: { display: false },
-          tooltip: {
-            backgroundColor: '#101018',
-            titleColor: '#B8B8C7',
-            bodyColor: '#FFFFFF',
-            borderColor: 'rgba(255,255,255,0.09)',
-            borderWidth: 1,
-            padding: 10,
-            displayColors: false,
-            callbacks: {
-              label: function (ctx) { return 'GPA: ' + ctx.parsed.y.toFixed(2); }
-            }
-          }
-        },
-        scales: {
-          x: {
-            grid: { display: false },
-            ticks: { color: '#B8B8C7', font: { family: 'Poppins', size: 11 } }
-          },
-          y: {
-            min: 0,
-            max: scale.max,
-            grid: { color: 'rgba(255,255,255,0.06)' },
-            ticks: { color: '#B8B8C7', font: { family: 'Poppins', size: 11 }, stepSize: scale.max / 4 }
-          }
-        }
-      }
-    });
+    if (wrapEl) {
+      wrapEl.innerHTML = GradeTrack.Charts.buildLineChartSVG(points, {
+        width: 320, height: 240, max: scale.max,
+        showGrid: true, showLabels: true, showValues: true
+      });
+    }
   }
 
   function renderStats(points) {
@@ -1650,7 +1509,7 @@ GradeTrack.Trend = (function () {
       return;
     }
 
-    const gpas = points.map(function (p) { return p.info.gpa; });
+    const gpas = points.map(function (p) { return p.value; });
     const highest = Math.max.apply(null, gpas);
     const lowest = Math.min.apply(null, gpas);
     const average = gpas.reduce(function (sum, g) { return sum + g; }, 0) / gpas.length;
@@ -1673,8 +1532,9 @@ GradeTrack.Trend = (function () {
 
 
 
+
 /* ================================================================
-   20. SETTINGS MODULE
+   21. SETTINGS MODULE
 ================================================================= */
 GradeTrack.Settings = (function () {
 
@@ -1694,7 +1554,7 @@ GradeTrack.Settings = (function () {
     if (versionEl) versionEl.textContent = GradeTrack.Constants.APP_VERSION;
   }
 
-  // Grade points are raw numbers now, so switching scales just
+  // Grade points are raw numbers, so switching scales just
   // proportionally rescales each course's point to the new max.
   function remapGrades(semesters, oldScale, newScale) {
     semesters.forEach(function (semester) {
@@ -1705,6 +1565,7 @@ GradeTrack.Settings = (function () {
       });
     });
   }
+
   function bindStudentNameInput() {
     const input = document.getElementById('settings-student-name');
     if (!input) return;
@@ -1733,7 +1594,7 @@ GradeTrack.Settings = (function () {
           s.settings.gradingScale = newScaleKey;
         });
 
-        GradeTrack.Toast.show('Switched to ' + newScale.label + ' — grades re-mapped', 'success');
+        GradeTrack.Toast.show('Switched to ' + newScale.label + ' — grade points rescaled', 'success');
       });
     });
   }
@@ -1823,7 +1684,7 @@ GradeTrack.Settings = (function () {
 })();
 
 /* ================================================================
-   21. BOOTSTRAP
+   22. BOOTSTRAP
 ================================================================= */
 document.addEventListener('DOMContentLoaded', function () {
   GradeTrack.Telegram.init();
@@ -1840,3 +1701,5 @@ document.addEventListener('DOMContentLoaded', function () {
   GradeTrack.Trend.init();
   GradeTrack.Settings.init();
 });
+
+
