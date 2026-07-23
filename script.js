@@ -482,7 +482,6 @@ GradeTrack.Router = (function () {
 
   function init() {
     bindNavClicks();
-    render('dashboard');
   }
 
   return { init, navigate, back, onEnter, current, PRIMARY_SCREENS, ALL_SCREENS };
@@ -1720,6 +1719,8 @@ document.addEventListener('DOMContentLoaded', function () {
   GradeTrack.Target.init();
   GradeTrack.Trend.init();
   GradeTrack.Settings.init();
+
+  // All modules have now registered their render hooks with
+  // Router — safe to render the initial screen.
+  GradeTrack.Router.navigate('dashboard', { haptic: false });
 });
-
-
