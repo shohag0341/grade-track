@@ -1173,7 +1173,12 @@ GradeTrack.CourseForm = (function () {
     const gradePoint = Number(gradeInput.value);
 
     if (!name) { showError('Please enter a course name.'); return; }
-    if (!credits || !Number.isInteger(credits) || credits < 1 || credits > 6) { showError('Credit hours must be a whole number between 1 and 6.'); return; }
+
+     
+    
+if (!credits || credits < 0.5 || credits > 6) { showError('Credit hours must be between 0.5 and 6.'); return; }
+
+     
     if (gradeInput.value === '' || isNaN(gradePoint) || gradePoint < 0 || gradePoint > scale.max) {
       showError('Grade point must be between 0 and ' + scale.max.toFixed(2) + '.'); return;
     }
@@ -1232,7 +1237,11 @@ GradeTrack.Calculator = (function () {
     return (
       '<div class="course-form-row" data-row-id="' + row.id + '">' +
         '<input class="course-form-row__input" type="text" placeholder="Course name" maxlength="60" data-field="name" value="' + GradeTrack.Utils.escapeHTML(row.name) + '">' +
-        '<input class="course-form-row__input" type="number" placeholder="Cr" min="1" max="6" step="1" inputmode="numeric" data-field="credits" value="' + (row.credits || '') + '">' +
+
+       
+      '<input class="course-form-row__input" type="number" placeholder="Cr" min="0.5" max="6" step="0.5" inputmode="decimal" data-field="credits" value="' + (row.credits || '') + '">' +
+
+       
         '<input class="course-form-row__input" type="number" placeholder="0-' + scale.max.toFixed(1) + '" min="0" max="' + scale.max + '" step="0.01" inputmode="decimal" data-field="gradePoint" value="' + (row.gradePoint || '') + '">' +
         '<button class="course-form-row__remove" type="button" data-remove-row aria-label="Remove course">' +
           '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path></svg>' +
@@ -1255,8 +1264,13 @@ GradeTrack.Calculator = (function () {
     rows.forEach(function (r) {
       const credits = Number(r.credits);
       const point = Number(r.gradePoint);
-      if (r.gradePoint === '' || isNaN(point) || point < 0 || point > scale.max) return;
-      if (!credits || !Number.isInteger(credits) || credits < 1 || credits > 6) return;
+
+
+if (r.gradePoint === '' || isNaN(point) || point < 0 || point > scale.max) return;
+      if (!credits || credits < 0.5 || credits > 6) return;
+
+       
+       
       totalPoints += point * credits;
       totalCredits += credits;
     });
@@ -1291,16 +1305,22 @@ GradeTrack.Calculator = (function () {
       if (!errorEl) return;
       const scale = GradeTrack.Calc.getActiveScale(GradeTrack.State.get());
 
+
+       
       if (field === 'credits') {
         const val = Number(e.target.value);
-        if (e.target.value && (!Number.isInteger(val) || val < 1 || val > 6)) {
-          errorEl.textContent = 'Credits must be a whole number between 1 and 6.';
+        if (e.target.value && (val < 0.5 || val > 6)) {
+          errorEl.textContent = 'Credits must be between 0.5 and 6.';
           errorEl.classList.add('is-visible');
         } else {
           errorEl.classList.remove('is-visible');
         }
       }
 
+
+
+
+       
       if (field === 'gradePoint') {
         const val = Number(e.target.value);
         if (e.target.value && (isNaN(val) || val < 0 || val > scale.max)) {
